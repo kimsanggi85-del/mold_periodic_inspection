@@ -426,6 +426,13 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
         페이지를 열면 자동으로 연결되어 서버 데이터를 불러오고, 입력 내용은 자동 저장됩니다.</p>
     </div>
     <div class="card">
+      <h3>금형 마스터</h3>
+      <div class="bar" style="margin-bottom:0">
+        <button class="btn" id="btn-mm">금형 마스터 관리</button>
+        <span class="note">금형 등록·수정·삭제. 등록하면 점검 대상·연간 계획·타발수·등급 평가에 자동 반영됩니다.</span>
+      </div>
+    </div>
+    <div class="card">
       <h3>정기점검 일괄 등록</h3>
       <div class="bar" style="margin-bottom:0">
         <button class="btn ghost" id="btn-bulk">일괄 점검 등록</button>
@@ -501,6 +508,11 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
         <div class="grid2">
           <div class="fld"><label>연도</label><select id="pm-y"></select></div>
           <div class="fld"><label>반영할 월</label><select id="pm-mo"></select></div>
+          <div class="fld" style="grid-column:1/-1"><label>대장에 없는 품번 처리</label>
+            <select id="pm-new">
+              <option value="add">새 품번으로 등록하고 반영</option>
+              <option value="skip">무시하고 목록만 표시</option>
+            </select></div>
         </div>
         <p class="note" style="margin-top:10px">MES &rarr; 설비관리 &rarr; 금형관리 &rarr; 조회 &rarr; 엑셀로 열기 후,
         <b>품번과 SHOT 열을 함께 복사</b>해서 아래에 붙여넣으세요. 탭·쉼표·공백 구분 모두 인식합니다.</p>
@@ -648,6 +660,53 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       <div class="spacer"></div>
       <button class="btn ghost" id="gb-cancel">닫기</button>
     </div>
+  </div>
+</div>
+<!-- 금형 마스터 -->
+<div class="mask" id="mmask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mm-title">
+    <div class="mhd"><h2 id="mm-title">금형 마스터</h2>
+      <span class="badge b-A" id="mm-cnt"></span>
+      <button class="x" id="mm-close" aria-label="닫기">&times;</button></div>
+    <div class="mbd">
+      <div class="card">
+        <h3 id="mm-mode">신규 등록</h3>
+        <div class="grid2">
+          <div class="fld"><label>품번 <span style="color:var(--bad)">*</span></label>
+            <input type="text" id="mm-pn" placeholder="예: 1985-0060-01"></div>
+          <div class="fld"><label>고객사 <span style="color:var(--bad)">*</span></label>
+            <input type="text" id="mm-cu" list="mm-culist" placeholder="SKF씰 / SKF SBC / 일진글로벌">
+            <datalist id="mm-culist"></datalist></div>
+          <div class="fld"><label>금형번호</label><input type="text" id="mm-mn" placeholder="예: 26DHA201A"></div>
+          <div class="fld"><label>모델</label><input type="text" id="mm-md" placeholder="예: OPEN SEAL"></div>
+          <div class="fld"><label>사용기계</label><input type="text" id="mm-tn" placeholder="예: 200톤"></div>
+          <div class="fld"><label>등급</label>
+            <select id="mm-gr"><option>A등급</option><option selected>B등급</option><option>C등급</option><option>F등급</option></select></div>
+        </div>
+        <div class="bar" style="margin:12px 0 0">
+          <button class="btn" id="mm-save">등록</button>
+          <button class="btn ghost" id="mm-new">신규 입력</button>
+          <button class="btn ghost" id="mm-del" hidden>이 금형 삭제</button>
+          <span class="note" id="mm-msg"></span>
+        </div>
+      </div>
+      <div class="card" style="padding:0">
+        <div class="bar" style="margin:10px 14px">
+          <select id="mm-fc"><option value="">고객사 전체</option></select>
+          <select id="mm-fg"><option value="">등급 전체</option><option>A등급</option><option>B등급</option><option>C등급</option><option>F등급</option></select>
+          <input type="search" id="mm-q" placeholder="품번 · 금형번호 검색">
+        </div>
+        <div style="overflow:auto;max-height:42vh">
+          <table class="sh" id="mmtbl">
+            <thead><tr><th class="lft">고객사</th><th class="lft">품번</th><th class="lft">금형번호</th>
+              <th class="lft">모델</th><th>사용기계</th><th>등급</th><th>점검주기</th></tr></thead>
+            <tbody></tbody></table>
+        </div>
+      </div>
+      <p class="note">행을 누르면 수정할 수 있습니다. 품번은 타발수·등급평가·점검이력의 연결 키라 수정할 수 없습니다.
+      품번을 바꾸려면 삭제 후 다시 등록하세요.</p>
+    </div>
+    <div class="mft"><div class="spacer"></div><button class="btn ghost" id="mm-cancel">닫기</button></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -861,7 +920,11 @@ SHOT_SEED.forEach(r=>{
 });
 const gradeOf=pn=>(MOLDS.find(m=>m.품번===pn)||{}).등급||'';
 const custOf=pn=>(MOLDS.find(m=>m.품번===pn)||{}).고객사||(SMETA[pn]?SMETA[pn].고객사:'')||'';
-const CUSTS=[...new Set(MOLDS.map(m=>m.고객사))];
+const CUSTS=[...new Set(MOLDS.map(m=>m.고객사).filter(Boolean))];
+function refreshCusts(){
+  const cs=[...new Set(MOLDS.map(m=>m.고객사).filter(Boolean))];
+  CUSTS.length=0; cs.forEach(c=>CUSTS.push(c));
+}
 const shotYear=()=>$('#sy').value||SHOT_YEARS[0];
 const nf=v=>v==null?'':Number(v).toLocaleString();
 function lastCum(a){if(!a)return null;for(let i=11;i>=0;i--)if(a[i]!=null)return a[i];return null}
@@ -978,10 +1041,12 @@ function shotCount(y,mo,cust){
   return n;
 }
 function shotReset(){
-  SHOT={};
+  SHOT={}; SMETA={};
+  SHOT_SEED.forEach(r=>{SMETA[r.품번]={고객사:r.고객사||'',모델:r.모델||'',기계:r.기계||''}});
   SHOT_SEED.forEach(r=>SHOT_YEARS.forEach(y=>{
     (SHOT[y]=SHOT[y]||{})[r.품번]=(r['y'+y]||Array(12).fill(null)).slice();
   }));
+  fillShotSelects();
 }
 const norm=s=>String(s).toUpperCase().replace(/\s/g,'');
 function findPn(pn){
@@ -989,30 +1054,46 @@ function findPn(pn){
   const n=norm(pn);
   return Object.keys(SMETA).find(k=>norm(k)===n)||null;
 }
+function addShotPn(pn){
+  const m=MOLDS.find(x=>x.품번===pn)||MOLDS.find(x=>norm(x.품번)===norm(pn));
+  SMETA[pn]={고객사:(m?m.고객사:'미등록'),모델:(m?(m.금형번호||''):''),기계:''};
+  SHOT_YEARS.forEach(yy=>{(SHOT[yy]=SHOT[yy]||{})[pn]=Array(12).fill(null)});
+}
 function applyPaste(){
-  const y=$('#pm-y').value, mo=+$('#pm-mo').value-1;
-  let ok=0,skip=0; const miss=[];
+  const y=$('#pm-y').value, mo=+$('#pm-mo').value-1, addNew=$('#pm-new').value==='add';
+  let ok=0, add=0, blank=0, bad=0;
+  const miss=[];
   SHOT[y]=SHOT[y]||{};
   $('#pm-txt').value.split(/\r?\n/).forEach(L=>{
     if(!L.trim())return;
     let t = L.includes('\t') ? L.split('\t') : L.split(/\s{2,}|,/);
     t = t.map(s=>s.trim()).filter(Boolean);
     if(t.length<2) t = L.trim().split(/\s+/);
-    if(t.length<2){skip++;return}
+    if(!t.length){bad++;return}
     let num=null;
     for(let i=t.length-1;i>=1;i--){
       const s=t[i].replace(/[,\s]/g,'');
       if(/^\d+$/.test(s)){num=parseInt(s,10);break}
     }
-    if(num==null){skip++;return}
-    const key=findPn(t[0]);
-    if(!key){miss.push(t[0]);return}
+    if(num==null){blank++;return}          // 타수 값이 없는 행
+    let key=findPn(t[0]);
+    if(!key){
+      if(!addNew){miss.push(t[0]);return}
+      key=t[0]; addShotPn(key); add++;
+    }
     (SHOT[y][key]=SHOT[y][key]||Array(12).fill(null))[mo]=num; ok++;
   });
+  if(add)fillShotSelects();
   $('#sy').value=y; renderShot();
-  $('#pm-res').innerHTML=`<b>${mo+1}월</b>에 반영 <b>${ok}건</b> · 미매칭 <b>${miss.length}건</b>${skip?' · 형식오류 '+skip+'행':''}`+
-    (miss.length?`<div class="note" style="margin-top:6px;color:var(--bad)">미매칭 품번: ${miss.slice(0,25).join(', ')}${miss.length>25?' 외 '+(miss.length-25)+'건':''}</div>`:'');
-  if(ok){toast(`${ok}건을 ${mo+1}월에 반영했습니다`); if(sb)push();}
+  const parts=[`<b>${mo+1}월</b>에 반영 <b style="color:var(--ok)">${ok}건</b>`];
+  if(add)parts.push(`신규 품번 등록 <b>${add}건</b>`);
+  if(miss.length)parts.push(`미등록 제외 <b style="color:var(--bad)">${miss.length}건</b>`);
+  if(blank)parts.push(`타수 없는 행 ${blank}행`);
+  if(bad)parts.push(`형식오류 ${bad}행`);
+  $('#pm-res').innerHTML=parts.join(' · ')+
+    (miss.length?`<div class="note" style="margin-top:6px;color:var(--bad)">미등록 품번: ${miss.slice(0,25).join(', ')}${miss.length>25?' 외 '+(miss.length-25)+'건':''}</div>`:'')+
+    (add?`<div class="note" style="margin-top:6px">신규 품번은 고객사 <b>미등록</b>으로 추가됩니다. 타발수 표에서 확인하세요.</div>`:'');
+  if(ok){toast(`${ok}건 반영${add?` · 신규 ${add}건`:''}`); if(sb)push();}
 }
 
 /* ================= 금형 등급 평가 ================= */
@@ -1326,6 +1407,105 @@ async function gbRun(){
   if(sb) await push();
 }
 
+/* ================= 금형 마스터 ================= */
+let mmEdit=null;
+function assignPlan(m){
+  const n={'A등급':1,'B등급':2,'C등급':4}[m.등급];
+  if(!n){delete PLAN[m.품번];return}
+  const gap=12/n, load=Array.from({length:gap},()=>0);
+  MOLDS.forEach(x=>{ if(x.품번===m.품번)return;
+    (PLAN[x.품번]||[]).forEach(mo=>{load[(mo-1)%gap]++}) });
+  let best=0; for(let i=1;i<gap;i++) if(load[i]<load[best]) best=i;
+  PLAN[m.품번]=Array.from({length:n},(_,k)=>best+1+k*gap);
+}
+function mmFill(){
+  $('#mm-culist').innerHTML=CUSTS.map(c=>`<option value="${c}">`).join('');
+  $('#mm-fc').innerHTML='<option value="">고객사 전체</option>'+CUSTS.map(c=>`<option>${c}</option>`).join('');
+}
+function mmClear(){
+  mmEdit=null;
+  $('#mm-mode').textContent='신규 등록'; $('#mm-save').textContent='등록';
+  $('#mm-pn').readOnly=false; $('#mm-del').hidden=true; $('#mm-msg').textContent='';
+  ['#mm-pn','#mm-cu','#mm-mn','#mm-md','#mm-tn'].forEach(id=>$(id).value='');
+  $('#mm-gr').value='B등급';
+  $$('#mmtbl tbody tr').forEach(t=>t.style.background='');
+}
+function mmLoad(pn){
+  const m=MOLDS.find(x=>x.품번===pn); if(!m)return;
+  mmEdit=pn;
+  $('#mm-mode').textContent='금형 수정 · '+pn; $('#mm-save').textContent='수정 저장';
+  $('#mm-pn').value=pn; $('#mm-pn').readOnly=true;
+  $('#mm-cu').value=m.고객사||''; $('#mm-mn').value=m.금형번호||'';
+  const me2=SMETA[pn]||{};
+  $('#mm-md').value=me2.모델||''; $('#mm-tn').value=me2.기계||'';
+  $('#mm-gr').value=m.등급; $('#mm-del').hidden=false; $('#mm-msg').textContent='';
+}
+function renderMM(){
+  if(!$('#mm-fc').options.length)return;
+  const c=$('#mm-fc').value, g=$('#mm-fg').value, q=$('#mm-q').value.trim().toLowerCase();
+  const list=MOLDS.filter(m=>{
+    if(c&&m.고객사!==c)return false;
+    if(g&&m.등급!==g)return false;
+    if(q&&!(m.품번.toLowerCase().includes(q)||(m.금형번호||'').toLowerCase().includes(q)))return false;
+    return true;
+  });
+  $('#mm-cnt').textContent=`전체 ${MOLDS.length}품번`;
+  $('#mmtbl tbody').innerHTML=list.length? list.map(m=>{
+    const e=SMETA[m.품번]||{};
+    return `<tr data-mpn="${encodeURIComponent(m.품번)}" style="cursor:pointer${m.품번===mmEdit?';background:#EEF6F4':''}">
+      <td style="font-size:11px;color:var(--muted)">${m.고객사||''}</td>
+      <td><b>${m.품번}</b></td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${m.금형번호||''}</td>
+      <td style="font-size:11px;color:var(--muted)">${e.모델||''}</td>
+      <td style="text-align:center;font-size:11px">${e.기계||''}</td>
+      <td style="text-align:center"><span class="badge b-${m.등급[0]}" style="margin:0">${m.등급}</span></td>
+      <td style="text-align:center;font-size:11px">${CYCTXT[m.등급]}</td></tr>`;
+  }).join('') : `<tr><td colspan="7" class="empty"><b>해당하는 금형이 없습니다</b>필터를 바꿔 보세요.</td></tr>`;
+  $$('#mmtbl tbody tr[data-mpn]').forEach(tr=>tr.onclick=()=>{mmLoad(decodeURIComponent(tr.dataset.mpn));renderMM()});
+}
+async function mmSave(){
+  const pn=$('#mm-pn').value.trim(), cu=$('#mm-cu').value.trim();
+  if(!pn){toast('품번을 입력하세요');$('#mm-pn').focus();return}
+  if(!cu){toast('고객사를 입력하세요');$('#mm-cu').focus();return}
+  const rec={품번:pn,금형번호:$('#mm-mn').value.trim(),등급:$('#mm-gr').value,고객사:cu};
+  const meta={고객사:cu,모델:$('#mm-md').value.trim(),기계:$('#mm-tn').value.trim()};
+  if(mmEdit){
+    const m=MOLDS.find(x=>x.품번===mmEdit);
+    const gChanged=m.등급!==rec.등급;
+    Object.assign(m,rec);
+    SMETA[pn]=Object.assign(SMETA[pn]||{},meta);
+    if(gChanged)assignPlan(m);
+    $('#mm-msg').textContent='수정했습니다.';
+  }else{
+    if(MOLDS.some(x=>x.품번===pn)){toast('이미 등록된 품번입니다');return}
+    MOLDS.push(rec);
+    SMETA[pn]=meta;
+    SHOT_YEARS.forEach(y=>{(SHOT[y]=SHOT[y]||{})[pn]=Array(12).fill(null)});
+    assignPlan(rec);
+    $('#mm-msg').textContent=`${pn} 등록 완료 · 점검주기 ${CYCTXT[rec.등급]}`;
+    mmClear();
+  }
+  refreshCusts(); fillCustSelects(); fillShotSelects(); fillGradeSelect(); mmFill();
+  render(); renderMM();
+  toast('금형 마스터를 저장했습니다');
+  if(sb) await push();
+}
+async function mmDel(){
+  if(!mmEdit)return;
+  const pn=mmEdit;
+  const h=HIST.filter(x=>x.품번===pn).length;
+  if(!confirm(`${pn} 을(를) 금형 마스터에서 삭제합니다.\n타발수·등급평가 자료도 함께 지워집니다.${h?`\n점검 이력 ${h}건은 그대로 보존됩니다.`:''}`))return;
+  const i=MOLDS.findIndex(x=>x.품번===pn);
+  if(i>=0)MOLDS.splice(i,1);
+  delete SMETA[pn]; delete GRD[pn]; delete PLAN[pn];
+  SHOT_YEARS.forEach(y=>{if(SHOT[y])delete SHOT[y][pn]});
+  mmClear();
+  refreshCusts(); fillCustSelects(); fillShotSelects(); fillGradeSelect(); mmFill();
+  render(); renderMM();
+  toast(`${pn} 을(를) 삭제했습니다`);
+  if(sb) await push();
+}
+
 function openM(pn){
   cur=MOLDS.find(m=>m.품번===pn); if(!cur)return;
   judge={};
@@ -1373,7 +1553,7 @@ async function push(){
   if(!sb)return;
   try{
     const {error}=await sb.from('kv_store').upsert({key:'mold_periodic_v1',
-      value:{hist:HIST,plan:PLAN,shot:SHOT,grd:GRD,insp:INSP,user:me},updated_at:new Date().toISOString()});
+      value:{hist:HIST,plan:PLAN,shot:SHOT,meta:SMETA,molds:MOLDS,grd:GRD,insp:INSP,user:me},updated_at:new Date().toISOString()});
     if(error)throw error;
     lastSync=Date.now(); dataSrc='Supabase 서버';
     setConn(true,`서버 저장 완료 · ${new Date().toLocaleTimeString('ko-KR')}`);
@@ -1381,10 +1561,15 @@ async function push(){
 }
 function loadPayload(v){
   if(Array.isArray(v)){HIST=v; return}
+  if(Array.isArray(v.molds)&&v.molds.length){
+    MOLDS.length=0; v.molds.forEach(m=>MOLDS.push(m));
+    refreshCusts(); fillCustSelects(); fillGradeSelect();
+  }
   HIST=v.hist||[];
   PLAN=v.plan&&Object.keys(v.plan).length?v.plan:defaultPlan();
   if(v.shot)SHOT_YEARS.forEach(y=>{if(v.shot[y])SHOT[y]=Object.assign(SHOT[y]||{},v.shot[y])});
   if(v.grd){GRD=Object.assign(GRD,v.grd);applyGrd()}
+  if(v.meta){SMETA=Object.assign(SMETA,v.meta);fillShotSelects()}
   if(v.insp)INSP=Object.assign(INSP,v.insp);
   if(v.user)me=v.user;
 }
@@ -1548,6 +1733,14 @@ $('#b-close').onclick=closeB; $('#b-cancel').onclick=closeB;
 $('#b-run').onclick=bRun; $('#b-del').onclick=bDel;
 const closeGB=()=>$('#gbmask').classList.remove('on');
 $('#btn-gbulk').onclick=()=>{gbFill();gbPrev();$('#gbmask').classList.add('on')};
+const closeMM=()=>$('#mmask').classList.remove('on');
+$('#btn-mm').onclick=()=>{mmFill();mmClear();renderMM();$('#mmask').classList.add('on');$('#mm-pn').focus()};
+$('#mm-close').onclick=closeMM; $('#mm-cancel').onclick=closeMM;
+$('#mm-save').onclick=mmSave; $('#mm-new').onclick=()=>{mmClear();renderMM();$('#mm-pn').focus()};
+$('#mm-del').onclick=mmDel;
+$('#mmask').onclick=e=>{if(e.target===$('#mmask'))closeMM()};
+['#mm-fc','#mm-fg'].forEach(id=>$(id).onchange=renderMM);
+$('#mm-q').oninput=renderMM;
 $('#btn-sdel').onclick=async()=>{
   const y=$('#sy').value, mo=$('#sd-m').value, c=$('#sc').value;
   const label=`${y}년 ${mo==='all'?'전체 월':(+mo+1)+'월'}${c?' · '+c:''}`;
@@ -1568,7 +1761,7 @@ $('#gbmask').onclick=e=>{if(e.target===$('#gbmask'))closeGB()};
 $('#bmask').onclick=e=>{if(e.target===$('#bmask'))closeB()};
 ['#b-y','#b-m1','#b-m2','#b-c','#b-d'].forEach(id=>$(id).onchange=bPrev);
 $('#mask').onclick=e=>{if(e.target===$('#mask'))closeM()};
-document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB();closeGB()}};
+document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB();closeGB();closeMM()}};
 $('#btn-conn').onclick=()=>connect(false); $('#btn-save').onclick=push;
 $('#btn-csv').onclick=()=>{
   const rows=[['고객사','품번','금형번호','등급','점검주기','최근 점검일','다음 점검 예정','상태','잔여일']];
@@ -1584,7 +1777,7 @@ $('#btn-hcsv').onclick=()=>{
   csv(rows,'금형_정기점검_이력_'+today()+'.csv');
 };
 $('#btn-exp').onclick=()=>{
-  const b=new Blob([JSON.stringify({hist:HIST,plan:PLAN,shot:SHOT,grd:GRD,insp:INSP,user:me},null,2)],{type:'application/json'});
+  const b=new Blob([JSON.stringify({hist:HIST,plan:PLAN,shot:SHOT,meta:SMETA,molds:MOLDS,grd:GRD,insp:INSP,user:me},null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);
   a.download='금형정기점검_이력_'+today()+'.json';a.click();
 };
@@ -1592,9 +1785,13 @@ $('#imp').onchange=e=>{
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
   r.onload=()=>{try{const d=JSON.parse(r.result);
-    if(Array.isArray(d)){HIST=d}else{HIST=d.hist||[];if(d.plan)PLAN=d.plan;
+    if(Array.isArray(d)){HIST=d}else{
+      if(Array.isArray(d.molds)&&d.molds.length){MOLDS.length=0;d.molds.forEach(m=>MOLDS.push(m));
+        refreshCusts();fillCustSelects();fillGradeSelect()}
+      HIST=d.hist||[];if(d.plan)PLAN=d.plan;
       if(d.shot)SHOT_YEARS.forEach(y=>{if(d.shot[y])SHOT[y]=Object.assign(SHOT[y]||{},d.shot[y])});
       if(d.grd){GRD=Object.assign(GRD,d.grd);applyGrd()}
+      if(d.meta){SMETA=Object.assign(SMETA,d.meta);fillShotSelects()}
       if(d.insp)INSP=Object.assign(INSP,d.insp);
       if(d.user)me=d.user}
     render();toast(`이력 ${HIST.length}건을 불러왔습니다`)}catch{toast('파일 형식이 올바르지 않습니다')}};
