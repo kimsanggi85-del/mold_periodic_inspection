@@ -424,6 +424,13 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       </div>
     </div>
     <div class="card">
+      <h3>금형 등급 일괄 산정</h3>
+      <div class="bar" style="margin-bottom:0">
+        <button class="btn ghost" id="btn-gbulk">등급 일괄 산정</button>
+        <span class="note">타발수와 금형 제작년도를 자동 산출하고, 나머지 항목은 기준값을 적용해 총점·등급을 매깁니다.</span>
+      </div>
+    </div>
+    <div class="card">
       <h3>데이터 백업</h3>
       <div class="bar" style="margin-bottom:0">
         <button class="btn ghost" id="btn-exp">JSON 내보내기</button>
@@ -575,6 +582,60 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       <button class="btn ghost" id="b-del">선택 기간 이력 삭제</button>
       <div class="spacer"></div>
       <button class="btn ghost" id="b-cancel">닫기</button>
+    </div>
+  </div>
+</div>
+<!-- 등급 일괄 산정 -->
+<div class="mask" id="gbmask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gb-title">
+    <div class="mhd"><h2 id="gb-title">금형 등급 일괄 산정</h2>
+      <button class="x" id="gb-close" aria-label="닫기">&times;</button></div>
+    <div class="mbd">
+      <div class="gtot">
+        <div><b id="gb-n">0</b><span>산정 대상</span></div>
+        <div><b id="gb-a" style="font-size:17px">0</b><span>A등급</span></div>
+        <div><b id="gb-b" style="font-size:17px">0</b><span>B등급</span></div>
+        <div><b id="gb-c" style="font-size:17px">0</b><span>C등급</span></div>
+        <div style="flex:1"></div>
+        <div class="warn" id="gb-force"></div>
+      </div>
+      <div class="card">
+        <h3>산정 대상</h3>
+        <div class="grid2">
+          <div class="fld"><label>고객사</label><select id="gb-c1"><option value="">전체</option></select></div>
+          <div class="fld"><label>범위</label>
+            <select id="gb-scope"><option value="none">미평가 금형만</option><option value="all">전체 (기존 평가 덮어쓰기)</option></select></div>
+          <div class="fld"><label>F등급(AS·단종)</label>
+            <select id="gb-f"><option value="skip">제외</option><option value="inc">포함</option></select></div>
+          <div class="fld"><label>산정 등급 반영</label>
+            <select id="gb-apply"><option value="1">금형 등급에 반영</option><option value="0">점수만 저장</option></select></div>
+          <div class="fld"><label>평가일자</label><input type="date" id="gb-date"></div>
+          <div class="fld"><label>평가자</label><input type="text" id="gb-by" placeholder="생산팀"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>자동 산출 항목</h3>
+        <div class="grid2">
+          <div class="fld"><label>1. 타발수 기준</label>
+            <select id="gb-shot"><option value="cum">누적 타발수</option><option value="ann">연간 타발수</option></select></div>
+          <div class="fld"><label>연간 기준 연도</label><select id="gb-year"></select></div>
+        </div>
+        <p class="note" style="margin-top:9px">
+          · <b>1번 타발수</b> — 타발수 대장에서 자동. 기존 평가 14건이 누적 기준과 일치해 누적을 기본으로 두었습니다.<br>
+          · <b>8번 금형제작년도</b> — 금형번호 앞자리에서 제작년도를 읽어 자동 산출합니다 (F등급은 A/S금형 5점).
+        </p>
+      </div>
+      <div class="card">
+        <h3>기준값 지정 · 나머지 11개 항목</h3>
+        <div class="grid2" id="gb-items"></div>
+        <p class="note" style="margin-top:9px">기존 SKF SBC 11건의 최빈값을 초기값으로 넣었습니다.
+        고객사별로 다르면 값을 바꿔 나눠 산정하세요. 적용 후 개별 금형은 등급 평가 탭에서 수정할 수 있습니다.</p>
+      </div>
+    </div>
+    <div class="mft">
+      <button class="btn" id="gb-run">산정 적용</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="gb-cancel">닫기</button>
     </div>
   </div>
 </div>
@@ -1146,6 +1207,88 @@ async function bDel(){
   if(sb) await push();
 }
 
+/* ================= 등급 일괄 산정 ================= */
+const GB_BASE=[5,1,1,3,3,4,3,3,2,3,2,2,2];   // SKF SBC 11건 최빈값
+const GB_AUTO=[0,7];                          // 자동 산출 항목 (타발수 / 제작년도)
+function moldYear(mn){const m=/^(\d{1,2})/.exec(mn||''); return m?2000+parseInt(m[1],10):null}
+function ageScoreOf(m){
+  if(m.등급==='F등급')return 5;
+  const y=moldYear(m.금형번호); if(!y)return null;
+  const a=new Date().getFullYear()-y;
+  return a<2?1:a<=5?2:a<=9?3:4;
+}
+function shotScoreOf(pn){
+  let v=null;
+  if($('#gb-shot').value==='cum'){
+    for(const y of SHOT_YEARS){const c=lastCum((SHOT[y]||{})[pn]); if(c!=null){v=c;break}}
+  }else{
+    v=annualOf((SHOT[$('#gb-year').value]||{})[pn]);
+  }
+  return scoreOf(v)||1;
+}
+function gbFill(){
+  $('#gb-c1').innerHTML='<option value="">전체</option>'+CUSTS.map(c=>`<option>${c}</option>`).join('');
+  $('#gb-year').innerHTML=SHOT_YEARS.map(y=>`<option>${y}</option>`).join('');
+  $('#gb-date').value=today(); $('#gb-by').value=me||'';
+  $('#gb-items').innerHTML=GITEMS.map((it,i)=>{
+    if(GB_AUTO.indexOf(i)>=0)return '';
+    const opts=[5,4,3,2,1].map((v,k)=>
+      `<option value="${v}" ${v===GB_BASE[i]?'selected':''}>${v}점 · ${it.opt[k]}</option>`).join('');
+    return `<div class="fld"><label>${it.구분}${it.no}. ${it.항목}${it.force?' ⚠':''}</label>
+      <select class="gbi" data-i="${i}">${opts}</select></div>`;
+  }).join('');
+  $$('#gb-items .gbi').forEach(s=>s.onchange=gbPrev);
+}
+function gbBase(){
+  const a=GB_BASE.slice();
+  $$('#gb-items .gbi').forEach(s=>a[+s.dataset.i]=+s.value);
+  return a;
+}
+function gbTargets(){
+  const c=$('#gb-c1').value, scope=$('#gb-scope').value, f=$('#gb-f').value;
+  return MOLDS.filter(m=>{
+    if(c&&m.고객사!==c)return false;
+    if(f==='skip'&&m.등급==='F등급')return false;
+    if(scope==='none'&&GRD[m.품번])return false;
+    return true;
+  });
+}
+function gbCalc(){
+  const base=gbBase(), out=[];
+  gbTargets().forEach(m=>{
+    const sc=base.slice();
+    sc[0]=shotScoreOf(m.품번);
+    const ag=ageScoreOf(m); sc[7]=ag==null?base[7]:ag;
+    out.push({m,sc,r:calcGrade(sc)});
+  });
+  return out;
+}
+function gbPrev(){
+  const r=gbCalc(), n={A등급:0,B등급:0,C등급:0};
+  let fc=0;
+  r.forEach(x=>{n[x.r.등급]++; if(x.r.forced.length)fc++});
+  $('#gb-n').textContent=r.length;
+  $('#gb-a').textContent=n['A등급']; $('#gb-b').textContent=n['B등급']; $('#gb-c').textContent=n['C등급'];
+  $('#gb-force').innerHTML=fc?`강제 C등급 ${fc}건`:'';
+}
+async function gbRun(){
+  const by=$('#gb-by').value.trim();
+  if(!by){toast('평가자를 입력하세요');$('#gb-by').focus();return}
+  const r=gbCalc();
+  if(!r.length){toast('산정 대상이 없습니다');return}
+  const ap=$('#gb-apply').value==='1';
+  if(!confirm(`${r.length}건을 산정합니다.${ap?' 산정 등급을 금형 등급에 반영합니다.':''}`))return;
+  const d=$('#gb-date').value||today();
+  let chg=0;
+  r.forEach(({m,sc,r:c})=>{
+    GRD[m.품번]={점수:sc.slice(),총점:c.tot,평가일:d,평가자:by,반영:ap};
+    if(ap&&m.등급!=='F등급'&&m.등급!==c.등급){m.등급=c.등급;chg++}
+  });
+  render(); gbPrev();
+  toast(`${r.length}건 산정 완료${chg?` · 등급 변경 ${chg}건`:''}`);
+  if(sb) await push();
+}
+
 function openM(pn){
   cur=MOLDS.find(m=>m.품번===pn); if(!cur)return;
   judge={};
@@ -1357,10 +1500,15 @@ const closeB=()=>$('#bmask').classList.remove('on');
 $('#btn-bulk').onclick=()=>{fillInsp();bPrev();$('#bmask').classList.add('on')};
 $('#b-close').onclick=closeB; $('#b-cancel').onclick=closeB;
 $('#b-run').onclick=bRun; $('#b-del').onclick=bDel;
+const closeGB=()=>$('#gbmask').classList.remove('on');
+$('#btn-gbulk').onclick=()=>{gbFill();gbPrev();$('#gbmask').classList.add('on')};
+$('#gb-close').onclick=closeGB; $('#gb-cancel').onclick=closeGB; $('#gb-run').onclick=gbRun;
+$('#gbmask').onclick=e=>{if(e.target===$('#gbmask'))closeGB()};
+['#gb-c1','#gb-scope','#gb-f','#gb-shot','#gb-year'].forEach(id=>$(id).onchange=gbPrev);
 $('#bmask').onclick=e=>{if(e.target===$('#bmask'))closeB()};
 ['#b-y','#b-m1','#b-m2','#b-c','#b-d'].forEach(id=>$(id).onchange=bPrev);
 $('#mask').onclick=e=>{if(e.target===$('#mask'))closeM()};
-document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB()}};
+document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB();closeGB()}};
 $('#btn-conn').onclick=()=>connect(false); $('#btn-save').onclick=push;
 $('#btn-csv').onclick=()=>{
   const rows=[['고객사','품번','금형번호','등급','점검주기','최근 점검일','다음 점검 예정','상태','잔여일']];
