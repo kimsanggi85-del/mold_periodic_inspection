@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>금형 정기점검 관리</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#EEF0F2; --surface:#fff; --ink:#16191D; --muted:#6B7280; --line:#D3D8DE;
+  --ok:#12695A; --ok-bg:#E3F0ED; --warn:#A9700B; --warn-bg:#FBF1DC;
+  --bad:#9E2B25; --bad-bg:#F8E6E4; --none:#8A9099; --none-bg:#EDEFF1;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --sans:"Pretendard","Malgun Gothic","맑은 고딕",-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+.wrap{max-width:1560px;margin:0 auto;padding:0 16px 64px}
+
+/* header */
+header{background:var(--ink);color:#fff;padding:18px 0 0}
+.hd{max-width:1560px;margin:0 auto;padding:0 16px}
+.hd h1{font-size:19px;font-weight:800;letter-spacing:-.4px}
+.hd .sub{font-size:12px;color:#9AA3AD;margin-top:3px;font-family:var(--mono)}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#2A2F36;margin-top:16px;border-radius:8px 8px 0 0;overflow:hidden}
+.st{background:#1E2228;padding:11px 13px}
+.st b{display:block;font-size:21px;font-weight:800;font-family:var(--mono);letter-spacing:-1px}
+.st span{font-size:11px;color:#9AA3AD}
+.st.bad b{color:#F08A82}.st.warn b{color:#E8B45A}.st.ok b{color:#5FC0AB}
+
+/* tabs */
+nav{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.tabs{max-width:1560px;margin:0 auto;padding:0 16px;display:flex;gap:2px;overflow-x:auto}
+.tab{padding:13px 15px;border:0;background:none;cursor:pointer;font-weight:600;color:var(--muted);
+  border-bottom:2.5px solid transparent;white-space:nowrap}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--ok)}
+.tab:focus-visible{outline:2px solid var(--ok);outline-offset:-2px}
+
+/* toolbar */
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:18px 0 12px}
+.chip{padding:6px 13px;border:1px solid var(--line);background:var(--surface);border-radius:999px;
+  cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+.chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+input[type=search],input[type=text],input[type=date],input[type=number],select,textarea{
+  padding:8px 11px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}
+input[type=search]{min-width:210px}
+.btn{padding:8px 15px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:7px;
+  cursor:pointer;font-weight:700}
+.btn.ghost{background:var(--surface);color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.spacer{flex:1}
+
+/* mold rows */
+.list{display:flex;flex-direction:column;gap:8px}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:13px 15px;
+  display:grid;grid-template-columns:1fr 260px 118px;gap:16px;align-items:center;cursor:pointer;
+  border-left:4px solid var(--line)}
+.row:hover{border-color:#AFB6BE;border-left-color:var(--ok)}
+.row.s-bad{border-left-color:var(--bad)} .row.s-warn{border-left-color:var(--warn)}
+.row.s-ok{border-left-color:var(--ok)} .row.s-na{border-left-color:var(--none)}
+.pn{font-weight:800;font-size:15px;letter-spacing:-.3px}
+.mn{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:2px}
+.badge{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:800;margin-left:7px;vertical-align:1px}
+.b-B{background:var(--warn-bg);color:var(--warn)} .b-A{background:var(--ok-bg);color:var(--ok)}
+.b-C{background:var(--bad-bg);color:var(--bad)} .b-F{background:var(--none-bg);color:var(--none)}
+
+/* signature: cycle gauge */
+.gauge{position:relative;height:26px}
+.gauge .track{position:absolute;top:9px;left:0;right:0;height:7px;background:#E4E7EA;border-radius:4px;overflow:hidden}
+.gauge .fill{height:100%;border-radius:4px}
+.gauge .lbl{position:absolute;top:-2px;left:0;font-size:10.5px;color:var(--muted);font-family:var(--mono)}
+.gauge .due{position:absolute;top:-2px;right:0;font-size:10.5px;font-weight:800;font-family:var(--mono)}
+.f-ok{background:var(--ok)} .f-warn{background:var(--warn)} .f-bad{background:var(--bad)} .f-na{background:#BFC5CB}
+.dd{text-align:right}
+.dd b{font-family:var(--mono);font-size:15px;font-weight:800;display:block}
+.dd span{font-size:11px;color:var(--muted)}
+.t-bad{color:var(--bad)} .t-warn{color:var(--warn)} .t-ok{color:var(--ok)} .t-na{color:var(--none)}
+
+/* modal */
+.mask{position:fixed;inset:0;background:rgba(20,24,29,.55);display:none;z-index:50;padding:20px;overflow:auto}
+.mask.on{display:block}
+.modal{background:var(--bg);max-width:920px;margin:0 auto;border-radius:12px;overflow:hidden}
+.mhd{background:var(--ink);color:#fff;padding:15px 20px;display:flex;align-items:center;gap:12px;
+  position:sticky;top:0;z-index:2}
+.mhd h2{font-size:16px;font-weight:800}
+.mhd .x{margin-left:auto;background:none;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1}
+.mbd{padding:18px 20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:15px;margin-bottom:12px}
+.card h3{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.6px;margin-bottom:11px;
+  text-transform:uppercase;font-family:var(--mono)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fld label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px}
+.fld input,.fld select,.fld textarea{width:100%}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:13px;vertical-align:middle}
+th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-spacing:.3px}
+.sec{background:#F0F2F4;font-weight:800;font-size:12px;font-family:var(--mono)}
+.jud{display:flex;gap:5px}
+.jud button{padding:5px 11px;border:1px solid var(--line);background:var(--surface);border-radius:6px;
+  cursor:pointer;font-size:12px;font-weight:700;color:var(--muted)}
+.jud button[aria-pressed=true].g{background:var(--ok);border-color:var(--ok);color:#fff}
+.jud button[aria-pressed=true].n{background:var(--bad);border-color:var(--bad);color:#fff}
+.jud button[aria-pressed=true].x{background:var(--none);border-color:var(--none);color:#fff}
+.mft{display:flex;gap:9px;padding:14px 20px;background:var(--surface);border-top:1px solid var(--line);
+  position:sticky;bottom:0}
+.empty{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty b{display:block;font-size:15px;color:var(--ink);margin-bottom:5px}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:11px 20px;border-radius:8px;font-weight:600;z-index:99;display:none}
+.toast.on{display:block}
+.note{font-size:12px;color:var(--muted);line-height:1.6}
+.pill{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:800}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-bad{background:var(--bad-bg);color:var(--bad)}
+
+/* 계획일정 매트릭스 */
+.mx{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+.mx th,.mx td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:center}
+.mx th{position:sticky;top:0;background:#F6F7F8;z-index:3;font-size:11px}
+.mx th.lft,.mx td.lft{text-align:left;padding-left:10px}
+.mx td.pn{font-weight:700;white-space:nowrap}
+.mx td.mno{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.cell{width:30px;height:26px;border:0;background:none;cursor:pointer;border-radius:5px;
+  font-size:13px;font-weight:800;line-height:1;color:var(--muted)}
+.cell:hover{background:#E9ECEF}
+.cell.plan{background:var(--none-bg);color:#5A6470}
+.cell.done{background:var(--ok-bg);color:var(--ok)}
+.cell.miss{background:var(--bad-bg);color:var(--bad)}
+.cell:focus-visible{outline:2px solid var(--ok);outline-offset:1px}
+.msum{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin-bottom:12px}
+.ms{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center}
+.ms b{display:block;font-family:var(--mono);font-size:15px;font-weight:800}
+.ms span{font-size:10px;color:var(--muted)}
+.ms.now{border-color:var(--ok);border-width:2px}
+.lgd{display:flex;gap:14px;font-size:12px;color:var(--muted);margin:10px 0 0;flex-wrap:wrap}
+.lgd i{display:inline-block;width:15px;height:15px;border-radius:4px;vertical-align:-3px;margin-right:4px}
+@media(max-width:860px){.msum{grid-template-columns:repeat(6,1fr)}}
+/* 타발수 관리 */
+.sh{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+.sh th,.sh td{border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap}
+.sh thead th{position:sticky;top:0;background:#F6F7F8;z-index:3;font-size:11px;text-align:center;font-weight:800;color:var(--muted)}
+.sh thead th.lft{text-align:left}
+.sh td.num{text-align:right;font-family:var(--mono)}
+.sh tbody tr:hover{background:#F8F9FA}
+.sh input.cel{width:70px;border:1px solid transparent;background:none;text-align:right;
+  font-family:var(--mono);font-size:12px;padding:3px 4px;border-radius:5px}
+.sh input.cel:hover{border-color:var(--line)}
+.sh input.cel:focus{border-color:var(--ok);background:var(--surface);outline:none}
+.sh td.an{background:#F6F7F8}
+/* 좌측 정보열 / 우측 집계열 고정 */
+.sh th.stk,.sh td.stk{position:sticky;background:var(--surface);z-index:2;
+  overflow:hidden;text-overflow:ellipsis}
+.sh thead th.stk{background:#F6F7F8;z-index:6}
+.sh tbody tr:hover td.stk{background:#F8F9FA}
+.sh .c0{left:0;min-width:64px;max-width:64px}
+.sh .c1{left:64px;min-width:136px;max-width:136px}
+.sh .c2{left:200px;min-width:104px;max-width:104px}
+.sh .c3{left:304px;min-width:54px;max-width:54px}
+.sh .c4{left:358px;min-width:58px;max-width:58px;box-shadow:1px 0 0 var(--line)}
+.sh .r1{right:56px;min-width:96px;max-width:96px;box-shadow:-1px 0 0 var(--line)}
+.sh .r0{right:0;min-width:56px;max-width:56px}
+.sh td.r1{background:#F6F7F8}
+.sh thead th.r1,.sh thead th.r0{background:#F6F7F8}
+.sh tbody tr:hover td.r1{background:#F1F3F5}
+.sh .mo{min-width:82px}
+/* 계획 매트릭스 좌측 고정 */
+.mx th.stk,.mx td.stk{position:sticky;background:var(--surface);z-index:2}
+.mx thead th.stk{background:#F6F7F8;z-index:6}
+.mx .k0{left:0;min-width:64px}
+.mx .k1{left:64px;min-width:120px}
+.mx .k2{left:184px;min-width:96px}
+.mx .k3{left:280px;min-width:64px;box-shadow:1px 0 0 var(--line)}
+.sc{display:inline-block;min-width:34px;text-align:center;padding:1px 6px;border-radius:5px;
+  font-weight:800;font-size:11px;font-family:var(--mono)}
+.sc4{background:var(--bad-bg);color:var(--bad)} .sc3{background:var(--warn-bg);color:var(--warn)}
+.sc12{background:var(--ok-bg);color:var(--ok)}
+.ssum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+/* 등급 평가 */
+.gopt{display:flex;gap:4px}
+.gopt button{flex:1;min-width:92px;padding:6px;border:1px solid var(--line);background:var(--surface);
+  border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;color:var(--muted);line-height:1.3}
+.gopt button b{display:block;font-family:var(--mono);font-size:12px}
+.gopt button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.gopt button[aria-pressed=true].hi{background:var(--bad);border-color:var(--bad);color:#fff}
+.gtot{display:flex;gap:18px;align-items:center;padding:13px 16px;background:var(--ink);color:#fff;
+  border-radius:10px;margin-bottom:12px;flex-wrap:wrap}
+.gtot b{font-family:var(--mono);font-size:23px;font-weight:800;letter-spacing:-1px}
+.gtot span{font-size:11px;color:#9AA3AD;display:block}
+.gtot .warn{color:#F08A82;font-size:12px;font-weight:700}
+.gw{background:var(--warn-bg);color:var(--warn);padding:2px 7px;border-radius:5px;font-size:11px;font-weight:800}
+@media(max-width:860px){.gopt{flex-wrap:wrap}}
+@media(max-width:860px){.ssum{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:860px){
+  .stats{grid-template-columns:repeat(3,1fr)}
+  .row{grid-template-columns:1fr;gap:9px}
+  .grid2{grid-template-columns:1fr}
+  .dd{text-align:left}
+}
+@media(prefers-reduced-motion:no-preference){.row{transition:border-color .12s}}
+</style>
+</head>
+<body>
+<header>
+  <div class="hd">
+    <h1>금형 정기점검 관리</h1>
+    <div class="sub">TJP-EU0702-01 · 등급별 점검주기 A 1회/년 · B 1회/6개월 · C 1회/3개월 · F 사용시 · SKF씰 / SKF SBC / 일진글로벌</div>
+    <div class="stats">
+      <div class="st"><b id="s-total">0</b><span id="s-scope">점검 대상</span></div>
+      <div class="st bad"><b id="s-over">0</b><span>주기 초과</span></div>
+      <div class="st warn"><b id="s-soon">0</b><span>임박 (30일)</span></div>
+      <div class="st ok"><b id="s-ok">0</b><span>정상</span></div>
+      <div class="st"><b id="s-rate">0%</b><span>금년 실시율</span></div>
+    </div>
+  </div>
+</header>
+
+<nav><div class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-t="shot">타발수 관리</button>
+  <button class="tab" role="tab" aria-selected="false" data-t="target">점검 대상</button>
+  <button class="tab" role="tab" aria-selected="false" data-t="hist">점검 이력</button>
+  <button class="tab" role="tab" aria-selected="false" data-t="grade">등급 평가</button>
+  <button class="tab" role="tab" aria-selected="false" data-t="plan">연간 계획일정</button>
+  <button class="tab" role="tab" aria-selected="false" data-t="set">설정</button>
+</div></nav>
+
+<div class="wrap">
+  <!-- 점검 대상 -->
+  <section id="p-target" hidden>
+    <div class="bar">
+      <button class="chip" data-f="all" aria-pressed="true">전체</button>
+      <button class="chip" data-f="over" aria-pressed="false">주기 초과</button>
+      <button class="chip" data-f="soon" aria-pressed="false">임박</button>
+      <button class="chip" data-f="ok" aria-pressed="false">정상</button>
+      <button class="chip" data-f="never" aria-pressed="false">미점검</button>
+      <select id="fc"><option value="">고객사 전체</option></select>
+      <select id="fg"><option value="">등급 전체</option><option>A등급</option><option>B등급</option><option>C등급</option><option>F등급</option></select>
+      <input type="search" id="q" placeholder="품번 · 금형번호 검색">
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btn-csv">점검 대상 내보내기</button>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="card" style="margin-top:14px">
+      <h3>고객사별 점검 현황</h3>
+      <table><thead><tr><th>고객사</th><th>점검 대상</th><th>주기 초과·미점검</th><th>임박</th><th>정상</th><th>F등급</th><th>금년 실시율</th></tr></thead>
+      <tbody id="ctbl"></tbody></table>
+    </div>
+  </section>
+
+  <!-- 이력 -->
+  <section id="p-hist" hidden>
+    <div class="bar">
+      <select id="hc"><option value="">고객사 전체</option></select>
+      <input type="search" id="hq" placeholder="품번 · 점검자 검색">
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btn-hcsv">이력 내보내기</button>
+    </div>
+    <div class="card"><div style="overflow-x:auto"><table id="htbl">
+      <thead><tr><th>점검일</th><th>고객사</th><th>품번</th><th>금형번호</th><th>등급</th><th>타발수</th><th>판정</th><th>불량항목</th><th>점검자</th></tr></thead>
+      <tbody></tbody></table></div></div>
+  </section>
+
+
+  <!-- 타발수 관리 -->
+  <section id="p-shot">
+    <div class="bar">
+      <select id="sy"></select>
+      <select id="sc"><option value="">고객사 전체</option></select>
+      <select id="smode"><option value="cum">누적 타발수</option><option value="inc">월 발생 타수</option></select>
+      <input type="search" id="sq" placeholder="품번 · 모델 검색">
+      <div class="spacer"></div>
+      <button class="btn" id="btn-paste">MES 타발수 붙여넣기</button>
+      <button class="btn ghost" id="btn-scsv">타발수 내보내기</button>
+    </div>
+    <div class="ssum" id="ssum"></div>
+    <div class="card" style="padding:0;overflow:auto;max-height:66vh">
+      <table class="sh" id="shtbl">
+        <thead><tr>
+          <th class="lft stk c0">고객사</th><th class="lft stk c1">품번</th><th class="lft stk c2">모델</th>
+          <th class="stk c3">사용기계</th><th class="stk c4">등급</th>
+          <th class="mo">1월</th><th class="mo">2월</th><th class="mo">3월</th><th class="mo">4월</th>
+          <th class="mo">5월</th><th class="mo">6월</th><th class="mo">7월</th><th class="mo">8월</th>
+          <th class="mo">9월</th><th class="mo">10월</th><th class="mo">11월</th><th class="mo">12월</th>
+          <th class="stk r1">연간 타발수</th><th class="stk r0">점수</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>타발수 점수 기준 · 26년 금형수명관리대장 기준</h3>
+      <table><thead><tr><th>연간 타발수</th><th>400만 이상</th><th>300만~400만</th><th>200만~300만</th><th>100만~200만</th><th>100만타 미만</th></tr></thead>
+      <tbody><tr><td><b>점수</b></td><td>5점</td><td>4점</td><td>3점</td><td>2점</td><td>1점</td></tr></tbody></table>
+      <p class="note" style="margin-top:10px">
+        · 생산관리자는 매월 1일에 전월까지의 <b>누적 SHOT수</b>를 해당 월 칸에 기록합니다. (대장 기재요령 그대로)<br>
+        · 1월 칸은 전년 12월 누적값을 그대로 이월한 값이며, <b>연간 타발수 = 최종 입력월 누적 − 1월 누적</b>으로 계산합니다. 1월이 비어 있으면 첫 입력월을 기준으로 잡고 <span style="color:var(--warn)">*</span> 표시를 붙입니다.<br>
+        · 대장 수식은 12월 칸을 기준으로 하여 연중에는 값이 음수로 나오지만, 여기서는 <b>마지막 입력월</b>을 기준으로 계산하므로 연중에도 점수가 정상 표시됩니다.<br>
+        · 이 점수는 금형 등급(A/B/C) 평가의 타발수 항목 배점이며, 등급은 별도 평가표 합계로 결정됩니다.<br>
+        · 셀을 직접 수정하거나 MES 붙여넣기로 한 번에 반영할 수 있습니다.
+      </p>
+    </div>
+  </section>
+
+
+  <!-- 등급 평가 -->
+  <section id="p-grade" hidden>
+    <div class="bar">
+      <button class="chip" data-gf="all" aria-pressed="true">전체</button>
+      <button class="chip" data-gf="done" aria-pressed="false">평가 완료</button>
+      <button class="chip" data-gf="none" aria-pressed="false">미평가</button>
+      <button class="chip" data-gf="diff" aria-pressed="false">등급 불일치</button>
+      <select id="gc"><option value="">고객사 전체</option></select>
+      <input type="search" id="gq" placeholder="품번 · 금형번호 검색">
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btn-gcsv">평가결과 내보내기</button>
+    </div>
+    <div class="ssum" id="gsum"></div>
+    <div class="card" style="padding:0;overflow:auto;max-height:64vh">
+      <table class="sh" id="gtbl">
+        <thead><tr>
+          <th class="lft">고객사</th><th class="lft">품번</th><th class="lft">금형번호</th>
+          <th>현재 등급</th><th>총점</th><th>산정 등급</th><th class="lft">강제 C등급 사유</th>
+          <th>평가일</th><th>평가자</th>
+        </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>금형 등급 관리 기준 · TJP-EU0702-01</h3>
+      <table><thead><tr><th>등급</th><th>점수배점</th><th>점검주기</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge b-A">A등급</span></td><td>20점 이하</td><td>1회/년</td><td></td></tr>
+        <tr><td><span class="badge b-B">B등급</span></td><td>21점 ~ 38점</td><td>1회/6개월</td><td></td></tr>
+        <tr><td><span class="badge b-C">C등급</span></td><td>39점 이상</td><td>1회/3개월</td><td></td></tr>
+        <tr><td><span class="badge b-F">F등급</span></td><td>해당무</td><td>사용시</td><td>AS금형, 단종금형 등</td></tr>
+      </tbody></table>
+      <p class="note" style="margin-top:10px">
+        · 13개 항목 × 1~5점, <b>총점 13점 ~ 65점</b>. 평가주기는 1회/년(12월 중)입니다.<br>
+        · 총점과 무관하게 <b>C등급이 강제 적용</b>되는 항목: 5번 금형파손이 타공정에 미치는 영향 <b>5점</b>,
+          품질 7번·8번 <b>4~5점</b>.<br>
+        · 1번 타발수 항목은 <b>타발수 관리 탭의 연간 타발수</b>에서 바로 가져올 수 있습니다.
+      </p>
+    </div>
+  </section>
+
+  <!-- 계획 -->
+  <section id="p-plan" hidden>
+    <div class="bar">
+      <select id="py"></select>
+      <select id="pc"><option value="">고객사 전체</option></select>
+      <select id="pg"><option value="B등급">B등급 (1회/6개월)</option><option value="A등급">A등급 (1회/년)</option><option value="C등급">C등급 (1회/3개월)</option></select>
+      <input type="search" id="pq" placeholder="품번 검색">
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btn-auto">주기 기준 자동 배정</button>
+      <button class="btn ghost" id="btn-pcsv">계획표 내보내기</button>
+    </div>
+    <div class="msum" id="msum"></div>
+    <div class="card" style="padding:0;overflow:auto;max-height:66vh">
+      <table class="mx" id="mx">
+        <thead><tr><th class="lft stk k0">고객사</th><th class="lft stk k1">품번</th><th class="lft stk k2">금형번호</th><th class="stk k3">주기</th>
+        <th>1월</th><th>2월</th><th>3월</th><th>4월</th><th>5월</th><th>6월</th>
+        <th>7월</th><th>8월</th><th>9월</th><th>10월</th><th>11월</th><th>12월</th></tr></thead>
+        <tbody></tbody></table>
+    </div>
+    <div class="lgd">
+      <span><i style="background:var(--none-bg)"></i>계획</span>
+      <span><i style="background:var(--ok-bg)"></i>실시 완료</span>
+      <span><i style="background:var(--bad-bg)"></i>미실시 (계획월 경과)</span>
+      <span>월 칸을 눌러 계획을 넣거나 뺄 수 있습니다.</span>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>등급별 대상 및 연간 점검 횟수</h3>
+      <table><thead><tr><th>등급</th><th>배점</th><th>점검주기</th><th>대상</th><th>연간 점검</th><th>월평균</th></tr></thead>
+      <tbody id="ptbl"></tbody></table>
+      <p class="note" style="margin-top:10px">F등급(AS·단종 금형)은 사용 시 점검으로 정기점검 계획 대상에서 제외됩니다.</p>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section id="p-set" hidden>
+    <div class="card">
+      <h3>Supabase 연결</h3>
+      <div class="grid2">
+        <div class="fld"><label>Project URL</label><input type="text" id="sb-url" placeholder="https://xxxx.supabase.co"></div>
+        <div class="fld"><label>anon key</label><input type="text" id="sb-key" placeholder="eyJhbGciOi..."></div>
+      </div>
+      <div class="bar" style="margin-bottom:0">
+        <button class="btn" id="btn-conn">연결하고 불러오기</button>
+        <button class="btn ghost" id="btn-save">서버에 저장</button>
+        <span class="note" id="conn-st">연결 안 됨 — 점검 결과가 저장되지 않습니다.</span>
+      </div>
+      <p class="note" style="margin-top:10px">kv_store 테이블의 <code>mold_periodic_v1</code> 키에 점검 이력을 저장합니다.
+      기존 금형 수리관리 시스템과 같은 프로젝트를 사용하시면 됩니다.</p>
+    </div>
+    <div class="card">
+      <h3>정기점검 일괄 등록</h3>
+      <div class="bar" style="margin-bottom:0">
+        <button class="btn ghost" id="btn-bulk">일괄 점검 등록</button>
+        <span class="note">연간 계획일정에 배정된 월을 기준으로 점검 이력을 한 번에 만들거나 지웁니다.</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>데이터 백업</h3>
+      <div class="bar" style="margin-bottom:0">
+        <button class="btn ghost" id="btn-exp">JSON 내보내기</button>
+        <label class="btn ghost" style="cursor:pointer">JSON 가져오기<input type="file" id="imp" accept=".json" hidden></label>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 점검 모달 -->
+<div class="mask" id="mask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
+    <div class="mhd">
+      <h2 id="m-title">정기점검</h2>
+      <span class="badge" id="m-grade"></span>
+      <button class="x" id="m-close" aria-label="닫기">×</button>
+    </div>
+    <div class="mbd">
+      <div class="card">
+        <h3>점검 정보</h3>
+        <div class="grid2">
+          <div class="fld"><label>점검일자</label><input type="date" id="f-date"></div>
+          <div class="fld"><label>점검자</label><input type="text" id="f-by" placeholder="점검자"></div>
+          <div class="fld"><label>누적 타발수 <span style="font-weight:400">(타발수 대장 자동 반영)</span></label><input type="number" id="f-shot" placeholder="예: 1250000"></div>
+          <div class="fld"><label>연마·교환 실시</label>
+            <select id="f-grind"><option value="">해당 없음</option><option>펀치/다이 연마</option>
+            <option>펀치/다이 교환</option><option>스프링 교환</option><option>가이드핀 교환</option>
+            <option>볼 포스트 교환</option><option>금형 세척</option></select></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>점검 항목 · 상형 8 / 하형 8</h3>
+        <div style="overflow-x:auto"><table id="itbl"><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <h3>특이사항 및 조치</h3>
+        <div class="fld" style="margin-bottom:10px"><label>특이사항</label>
+          <textarea id="f-note" rows="2" placeholder="불량 항목의 구체 내용"></textarea></div>
+        <div class="fld"><label>조치내용</label>
+          <textarea id="f-act" rows="2" placeholder="수리·교환 등 조치 결과"></textarea></div>
+      </div>
+    </div>
+    <div class="mft">
+      <button class="btn" id="m-save">점검 결과 저장</button>
+      <button class="btn ghost" id="m-cancel">취소</button>
+      <div class="spacer"></div>
+      <span class="note" id="m-prev"></span>
+    </div>
+  </div>
+</div>
+<!-- MES 붙여넣기 -->
+<div class="mask" id="pmask">
+  <div class="modal" style="max-width:680px" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+    <div class="mhd"><h2 id="pm-title">MES 타발수 붙여넣기</h2>
+      <button class="x" id="pm-close" aria-label="닫기">&times;</button></div>
+    <div class="mbd">
+      <div class="card">
+        <h3>반영 대상</h3>
+        <div class="grid2">
+          <div class="fld"><label>연도</label><select id="pm-y"></select></div>
+          <div class="fld"><label>반영할 월</label><select id="pm-mo"></select></div>
+        </div>
+        <p class="note" style="margin-top:10px">MES &rarr; 설비관리 &rarr; 금형관리 &rarr; 조회 &rarr; 엑셀로 열기 후,
+        <b>품번과 SHOT 열을 함께 복사</b>해서 아래에 붙여넣으세요. 탭·쉼표·공백 구분 모두 인식합니다.</p>
+      </div>
+      <div class="card">
+        <h3>붙여넣기</h3>
+        <textarea id="pm-txt" rows="11" style="width:100%;font-family:var(--mono);font-size:12px"
+          placeholder="1515-196&#9;1704356&#10;1547-102-1&#9;122480&#10;1551-189&#9;1742560"></textarea>
+        <p class="note" id="pm-res" style="margin-top:9px"></p>
+      </div>
+    </div>
+    <div class="mft">
+      <button class="btn" id="pm-apply">반영하기</button>
+      <button class="btn ghost" id="pm-cancel">닫기</button>
+    </div>
+  </div>
+</div>
+<!-- 등급 평가 모달 -->
+<div class="mask" id="gmask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="g-title">
+    <div class="mhd"><h2 id="g-title">금형 등급 평가</h2>
+      <span class="badge" id="g-now"></span>
+      <button class="x" id="g-close" aria-label="닫기">&times;</button></div>
+    <div class="mbd">
+      <div class="gtot">
+        <div><b id="g-total">—</b><span>총점 (13~65)</span></div>
+        <div><b id="g-grade">—</b><span>산정 등급</span></div>
+        <div><b id="g-cyc" style="font-size:15px">—</b><span>점검주기</span></div>
+        <div style="flex:1"></div>
+        <div class="warn" id="g-force"></div>
+      </div>
+      <div class="card">
+        <h3>평가 정보</h3>
+        <div class="grid2">
+          <div class="fld"><label>평가일자</label><input type="date" id="g-date"></div>
+          <div class="fld"><label>평가자</label><input type="text" id="g-by" placeholder="생산팀"></div>
+        </div>
+        <p class="note" id="g-shot" style="margin-top:9px"></p>
+      </div>
+      <div class="card">
+        <h3>평가 항목 · 13항목</h3>
+        <div style="overflow-x:auto"><table id="gitbl"><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div class="mft">
+      <button class="btn" id="g-save">평가 저장</button>
+      <button class="btn ghost" id="g-apply">저장하고 등급 반영</button>
+      <button class="btn ghost" id="g-cancel">취소</button>
+    </div>
+  </div>
+</div>
+<!-- 일괄 점검 등록 -->
+<div class="mask" id="bmask">
+  <div class="modal" style="max-width:660px" role="dialog" aria-modal="true" aria-labelledby="b-title">
+    <div class="mhd"><h2 id="b-title">정기점검 일괄 등록</h2>
+      <button class="x" id="b-close" aria-label="닫기">&times;</button></div>
+    <div class="mbd">
+      <div class="card">
+        <h3>등록 범위</h3>
+        <div class="grid2">
+          <div class="fld"><label>연도</label><select id="b-y"></select></div>
+          <div class="fld"><label>고객사</label><select id="b-c"><option value="">전체</option></select></div>
+          <div class="fld"><label>시작 월</label><select id="b-m1"></select></div>
+          <div class="fld"><label>종료 월</label><select id="b-m2"></select></div>
+          <div class="fld"><label>점검일자</label>
+            <select id="b-d"><option value="end">계획월 말일</option><option value="mid">계획월 15일</option></select></div>
+        </div>
+        <p class="note" id="b-prev" style="margin-top:11px"></p>
+      </div>
+      <div class="card">
+        <h3>고객사별 점검자</h3>
+        <div class="grid2" id="b-insp"></div>
+        <p class="note" style="margin-top:9px">여기서 바꾼 이름은 개별 점검 화면의 점검자 기본값으로도 쓰입니다.</p>
+      </div>
+      <div class="card">
+        <h3>등록 내용</h3>
+        <p class="note">
+          · 연간 계획일정에 배정된 월을 기준으로 <b>16개 항목 전부 양호 · 합격</b> 이력을 만듭니다.<br>
+          · 누적 타발수는 타발수 대장의 해당 월 값이 자동으로 들어갑니다.<br>
+          · 이미 이력이 있는 월, 그리고 오늘 이후 날짜는 건너뜁니다.<br>
+          · <b>실제 점검한 날짜·점검자와 다르면</b> 등록 후 점검 이력에서 수정하세요.
+            불량이 있었던 금형도 개별로 다시 기록해야 합니다.
+        </p>
+      </div>
+    </div>
+    <div class="mft">
+      <button class="btn" id="b-run">일괄 등록</button>
+      <button class="btn ghost" id="b-del">선택 기간 이력 삭제</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="b-cancel">닫기</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const MOLDS=[{"품번":"1515-196","금형번호":"16DHA205A","등급":"B등급","고객사":"SKF씰"},{"품번":"1520-172","금형번호":"11DHA211","등급":"F등급","고객사":"SKF씰"},{"품번":"1547-102-1","금형번호":"1DHA089","등급":"B등급","고객사":"SKF씰"},{"품번":"1547-102-2","금형번호":"1DHA088","등급":"B등급","고객사":"SKF씰"},{"품번":"1549-156","금형번호":"10DHA209","등급":"B등급","고객사":"SKF씰"},{"품번":"1549-157","금형번호":"10DHA207","등급":"B등급","고객사":"SKF씰"},{"품번":"1551-189","금형번호":"14DHA212A","등급":"B등급","고객사":"SKF씰"},{"품번":"1553-101-1","금형번호":"7DHA003","등급":"B등급","고객사":"SKF씰"},{"품번":"1553-101-2","금형번호":"0DHA040","등급":"B등급","고객사":"SKF씰"},{"품번":"1560-0018-01","금형번호":"17DHA209A","등급":"F등급","고객사":"SKF씰"},{"품번":"1560-0018-21","금형번호":"17DHA211A","등급":"F등급","고객사":"SKF씰"},{"품번":"1561-0017-00","금형번호":"17DHA210A","등급":"F등급","고객사":"SKF씰"},{"품번":"1642-118-1","금형번호":"1DHA102","등급":"B등급","고객사":"SKF씰"},{"품번":"1642-118-2","금형번호":"1DHA104","등급":"F등급","고객사":"SKF씰"},{"품번":"1654-119-1","금형번호":"1DHA103","등급":"B등급","고객사":"SKF씰"},{"품번":"1654-119-2","금형번호":"1DHA105","등급":"B등급","고객사":"SKF씰"},{"품번":"1657-127","금형번호":"7DHA051","등급":"B등급","고객사":"SKF씰"},{"품번":"1657-130","금형번호":"12DHA210A","등급":"B등급","고객사":"SKF씰"},{"품번":"1660-131","금형번호":"12DHA213A","등급":"B등급","고객사":"SKF씰"},{"품번":"1660-132","금형번호":"13DHA201A","등급":"B등급","고객사":"SKF씰"},{"품번":"1664-128-1","금형번호":"12DHA206A","등급":"B등급","고객사":"SKF씰"},{"품번":"1664-128-2","금형번호":"12DHA207A","등급":"B등급","고객사":"SKF씰"},{"품번":"1752-297","금형번호":"12DHA209A","등급":"B등급","고객사":"SKF씰"},{"품번":"1755-296","금형번호":"12DHA208A","등급":"B등급","고객사":"SKF씰"},{"품번":"1781-0001-00","금형번호":"17DHA205A","등급":"B등급","고객사":"SKF씰"},{"품번":"1807-653","금형번호":"15DHA214A","등급":"B등급","고객사":"SKF씰"},{"품번":"1816-0010-01","금형번호":"17DHA208A","등급":"F등급","고객사":"SKF씰"},{"품번":"1837-0033-01","금형번호":"18DHA207A","등급":"F등급","고객사":"SKF씰"},{"품번":"1839-629","금형번호":"11DHA209","등급":"B등급","고객사":"SKF씰"},{"품번":"1853-515-1","금형번호":"9DHA036A","등급":"B등급","고객사":"SKF씰"},{"품번":"1853-515-2","금형번호":"9DHA033","등급":"B등급","고객사":"SKF씰"},{"품번":"1853-586","금형번호":"08DHA086","등급":"B등급","고객사":"SKF씰"},{"품번":"1856-627-2","금형번호":"11DHA208","등급":"F등급","고객사":"SKF씰"},{"품번":"1856-628-1","금형번호":"11DHA207","등급":"F등급","고객사":"SKF씰"},{"품번":"1858-618","금형번호":"10DHA238A","등급":"B등급","고객사":"SKF씰"},{"품번":"1858-618-2","금형번호":"10DHA239","등급":"B등급","고객사":"SKF씰"},{"품번":"1858-619","금형번호":"10DHA239A","등급":"B등급","고객사":"SKF씰"},{"품번":"1861-596","금형번호":"10DHA214A","등급":"B등급","고객사":"SKF씰"},{"품번":"1861-597","금형번호":"10DHA215A","등급":"B등급","고객사":"SKF씰"},{"품번":"1862-0041-01","금형번호":"20DHA202A","등급":"B등급","고객사":"SKF씰"},{"품번":"1862-0041-21","금형번호":"20DHA203A","등급":"B등급","고객사":"SKF씰"},{"품번":"1862-0042-21","금형번호":"20DHA204A","등급":"B등급","고객사":"SKF씰"},{"품번":"1862-604","금형번호":"10DHA227","등급":"F등급","고객사":"SKF씰"},{"품번":"1862-624","금형번호":"11DHA201A","등급":"F등급","고객사":"SKF씰"},{"품번":"1862-651","금형번호":"15DHA207A","등급":"B등급","고객사":"SKF씰"},{"품번":"1866-599","금형번호":"10DHA221","등급":"B등급","고객사":"SKF씰"},{"품번":"1866-617-1","금형번호":"10DHA236A","등급":"B등급","고객사":"SKF씰"},{"품번":"1866-617-2","금형번호":"10DHA237A","등급":"F등급","고객사":"SKF씰"},{"품번":"1869-621","금형번호":"10DHA248A","등급":"F등급","고객사":"SKF씰"},{"품번":"1870-602-1","금형번호":"10DHA223","등급":"B등급","고객사":"SKF씰"},{"품번":"1870-602-2","금형번호":"10DHA224","등급":"B등급","고객사":"SKF씰"},{"품번":"1871-0043-01","금형번호":"20DHA205A","등급":"B등급","고객사":"SKF씰"},{"품번":"1871-0043-21","금형번호":"20DHA206A","등급":"B등급","고객사":"SKF씰"},{"품번":"1873-0044-21","금형번호":"20DHA207A","등급":"B등급","고객사":"SKF씰"},{"품번":"1873-0045-01","금형번호":"20DHA208A","등급":"B등급","고객사":"SKF씰"},{"품번":"1874-623","금형번호":"10DHA249A","등급":"B등급","고객사":"SKF씰"},{"품번":"1888-0005","금형번호":"16DHA209A","등급":"B등급","고객사":"SKF씰"},{"품번":"1945-349-1","금형번호":"10DHA205A","등급":"B등급","고객사":"SKF씰"},{"품번":"1945-349-2","금형번호":"10DHA235A","등급":"B등급","고객사":"SKF씰"},{"품번":"1946-0053-01","금형번호":"19DHA206A","등급":"B등급","고객사":"SKF씰"},{"품번":"1947-353","금형번호":"10DHA203","등급":"B등급","고객사":"SKF씰"},{"품번":"1950-354-1","금형번호":"10DHA201A","등급":"B등급","고객사":"SKF씰"},{"품번":"1950-354-2","금형번호":"10DHA202A","등급":"B등급","고객사":"SKF씰"},{"품번":"1950-374-1","금형번호":"13DHA209A","등급":"F등급","고객사":"SKF씰"},{"품번":"1950-374-2","금형번호":"13DHA210A","등급":"F등급","고객사":"SKF씰"},{"품번":"1951-386","금형번호":"16DHA202A","등급":"B등급","고객사":"SKF씰"},{"품번":"1952-0056-01","금형번호":"18DHA214A","등급":"B등급","고객사":"SKF씰"},{"품번":"1952-0056-21","금형번호":"18DHA215A","등급":"B등급","고객사":"SKF씰"},{"품번":"1952-346-1","금형번호":"10DHA240","등급":"B등급","고객사":"SKF씰"},{"품번":"1952-346-2","금형번호":"11DHA213A","등급":"B등급","고객사":"SKF씰"},{"품번":"1952-367-2(2호)","금형번호":"12DHA212A","등급":"B등급","고객사":"SKF씰"},{"품번":"1958-365-1","금형번호":"12DHA203A","등급":"B등급","고객사":"SKF씰"},{"품번":"1958-365-2(2호)","금형번호":"18TJA209A","등급":"B등급","고객사":"SKF씰"},{"품번":"1958-373-1","금형번호":"13DHA207A","등급":"F등급","고객사":"SKF씰"},{"품번":"1958-373-2","금형번호":"13DHA208A","등급":"F등급","고객사":"SKF씰"},{"품번":"1959-0024-01","금형번호":"17DHA212A","등급":"B등급","고객사":"SKF씰"},{"품번":"1959-0024-21","금형번호":"17DHA213A","등급":"B등급","고객사":"SKF씰"},{"품번":"1959-360-1","금형번호":"11DHA202A","등급":"F등급","고객사":"SKF씰"},{"품번":"1959-360-2","금형번호":"11DHA203A","등급":"F등급","고객사":"SKF씰"},{"품번":"1960-0031-01","금형번호":"19DHA203A","등급":"B등급","고객사":"SKF씰"},{"품번":"1960-0031-21","금형번호":"19DHA204A","등급":"B등급","고객사":"SKF씰"},{"품번":"1960-361","금형번호":"12DHA216A","등급":"B등급","고객사":"SKF씰"},{"품번":"1962-0030","금형번호":"18DHA202A","등급":"B등급","고객사":"SKF씰"},{"품번":"1963-0055-01","금형번호":"18DHA224A","등급":"F등급","고객사":"SKF씰"},{"품번":"1963-0055-21","금형번호":"18DHA225A","등급":"F등급","고객사":"SKF씰"},{"품번":"1965-326-1","금형번호":"6DHA037","등급":"B등급","고객사":"SKF씰"},{"품번":"1965-326-2","금형번호":"6DHA038A","등급":"B등급","고객사":"SKF씰"},{"품번":"1967-0052-01","금형번호":"20DHA209A","등급":"B등급","고객사":"SKF씰"},{"품번":"1967-0052-21","금형번호":"20DHA210A","등급":"F등급","고객사":"SKF씰"},{"품번":"1967-391","금형번호":"16DHA206A","등급":"B등급","고객사":"SKF씰"},{"품번":"1967-392","금형번호":"16DHA207A","등급":"B등급","고객사":"SKF씰"},{"품번":"1968-0016-01","금형번호":"18DHA201A","등급":"B등급","고객사":"SKF씰"},{"품번":"1968-0016-02","금형번호":"17DHA207A","등급":"B등급","고객사":"SKF씰"},{"품번":"1968-362","금형번호":"12DHA215A","등급":"B등급","고객사":"SKF씰"},{"품번":"1968-364-1","금형번호":"12DHA201A","등급":"B등급","고객사":"SKF씰"},{"품번":"1968-364-2","금형번호":"12DHA202A","등급":"B등급","고객사":"SKF씰"},{"품번":"1969-0030-01","금형번호":"19DHA205A","등급":"B등급","고객사":"SKF씰"},{"품번":"1970-363","금형번호":"11DHA216","등급":"B등급","고객사":"SKF씰"},{"품번":"1970-372-1","금형번호":"13DHA204A","등급":"B등급","고객사":"SKF씰"},{"품번":"1970-372-2","금형번호":"13DHA205A","등급":"B등급","고객사":"SKF씰"},{"품번":"1972-383","금형번호":"15DHA209A","등급":"B등급","고객사":"SKF씰"},{"품번":"1973-325","금형번호":"6DHA039","등급":"B등급","고객사":"SKF씰"},{"품번":"1973-370(375)","금형번호":"13DHA202A","등급":"B등급","고객사":"SKF씰"},{"품번":"1974-0023-01","금형번호":"18DHA226A","등급":"B등급","고객사":"SKF씰"},{"품번":"1974-0023-21","금형번호":"18DHA227A","등급":"B등급","고객사":"SKF씰"},{"품번":"1976-0004-01","금형번호":"19DHA201A","등급":"B등급","고객사":"SKF씰"},{"품번":"1979-0051-01","금형번호":"20DHA211A","등급":"B등급","고객사":"SKF씰"},{"품번":"1982-371","금형번호":"13DHA206A","등급":"B등급","고객사":"SKF씰"},{"품번":"C657-127","금형번호":"7DHA051A","등급":"F등급","고객사":"SKF씰"},{"품번":"C873-622-2","금형번호":"10DHA250A","등급":"F등급","고객사":"SKF씰"},{"품번":"IW/OW-BDA-1106-1","금형번호":"14DFA209A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1106-2","금형번호":"14DFA209B","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1113-1","금형번호":"16DFA201A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1113-2","금형번호":"21RDA601A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1113D","금형번호":"19ACA207A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1124BA","금형번호":"18CAA208A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1156","금형번호":"22SKA201A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1159B","금형번호":"19RDA613A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1165A","금형번호":"20CAA214A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1179-1","금형번호":"19SKA202A","등급":"B등급","고객사":"SKF SBC"},{"품번":"IW/OW-BDA-1179-2","금형번호":"21TJA201A_2","등급":"B등급","고객사":"SKF SBC"},{"품번":"AB3038-SC","금형번호":"15IGA211A","등급":"B등급","고객사":"일진글로벌"},{"품번":"AB3248-SC-01","금형번호":"18IGA203A","등급":"B등급","고객사":"일진글로벌"},{"품번":"AT3037-GC-00","금형번호":"17IGA201A","등급":"B등급","고객사":"일진글로벌"}];
+const GRADE_SEED={"IW/OW-BDA-1106-1":{"총점":35,"점수":[5,1,1,3,3,4,3,4,2,3,2,2,2]},"IW/OW-BDA-1106-2":{"총점":33,"점수":[5,1,1,2,3,4,3,3,2,3,2,2,2]},"IW/OW-BDA-1113-1":{"총점":34,"점수":[5,1,1,3,3,4,3,3,2,3,2,2,2]},"IW/OW-BDA-1113-2":{"총점":33,"점수":[5,1,1,2,3,4,3,3,2,3,2,2,2]},"IW/OW-BDA-1113D":{"총점":34,"점수":[5,1,1,3,3,4,3,3,2,3,2,2,2]},"IW/OW-BDA-1124BA":{"총점":35,"점수":[4,1,2,4,3,4,3,3,2,3,2,2,2]},"IW/OW-BDA-1156":{"총점":29,"점수":[2,1,2,4,3,2,3,1,2,3,2,2,2]},"IW/OW-BDA-1159B":{"총점":31,"점수":[3,1,2,3,3,3,3,2,2,3,2,2,2]},"IW/OW-BDA-1165A":{"총점":25,"점수":[1,1,1,2,3,2,3,2,1,3,2,2,2]},"IW/OW-BDA-1179-1":{"총점":35,"점수":[5,1,2,3,3,4,3,3,2,3,2,2,2]},"IW/OW-BDA-1179-2":{"총점":32,"점수":[3,1,2,3,3,4,3,2,2,3,2,2,2]},"AB3248-SC-01":{"총점":28,"점수":[1,3,1,2,3,2,3,1,2,3,3,2,2]},"AT3037-GC-00":{"총점":37,"점수":[1,3,5,4,1,3,5,3,3,3,2,2,2]},"AB3038-SC":{"총점":36,"점수":[1,2,4,4,1,3,5,3,3,3,2,3,2]}};
+const ITEMS=[{"구분":"상형","부위":"각종펀치류","기준":"윤활유 공급상태(인선부 마모및 크랙)","방법":"육안"},{"구분":"상형","부위":"상홀다","기준":"찍힘 및 휨","방법":"육안"},{"구분":"상형","부위":"펀치 고정판","기준":"눌림 및 휨","방법":"육안"},{"구분":"상형","부위":"스트리퍼","기준":"작동상태","방법":"육안및 청각"},{"구분":"상형","부위":"가이드 포스트및 부쉬","기준":"작동상태","방법":"육안"},{"구분":"상형","부위":"각종볼트","기준":"마모 및 풀림상태","방법":"육안"},{"구분":"상형","부위":"각종 스프링","기준":"파손 여부","방법":"육안"},{"구분":"상형","부위":"맞춤핀","기준":"손상 여부","방법":"육안"},{"구분":"하형","부위":"각종다이류","기준":"인선부 마모 및 크랙","방법":"육안"},{"구분":"하형","부위":"소재가이트및 리프트","기준":"작동상태","방법":"육안"},{"구분":"하형","부위":"볼트 풀림","기준":"풀림 없을 것","방법":"육안"},{"구분":"하형","부위":"각종패드","기준":"깨짐 및 작동상태","방법":"육안"},{"구분":"하형","부위":"가스 스프링","기준":"압력 점검","방법":"육안"},{"구분":"하형","부위":"맞춤핀","기준":"손상 여부","방법":"육안"},{"구분":"하형","부위":"하홀다","기준":"찍힘 및 휨","방법":"육안"},{"구분":"하형","부위":"각종볼트","기준":"마모 및 풀림상태","방법":"육안"}];
+const SHOT_SEED=[{"품번":"1515-196","고객사":"SKF씰","모델":"X69F","기계":"150톤","y2026":[1628252,1665128,1665128,1704356,1704356,1704356,null,null,null,null,null,null],"y2025":[1361818,1363024,1363024,1410084,1410107,1445462,1455558,1546612,1628174,1628252,1628252,1628252]},{"품번":"1547-102-1","고객사":"SKF씰","모델":"0092","기계":"150톤","y2026":[122480,122480,122480,122480,122480,122480,null,null,null,null,null,null],"y2025":[122480,122480,122480,122480,122480,122480,122480,122480,122480,122480,122480,122480]},{"품번":"1547-102-2","고객사":"SKF씰","모델":"0092","기계":"150톤","y2026":[247970,247970,247970,247970,247970,247970,null,null,null,null,null,null],"y2025":[247970,247970,247970,247970,247970,247970,247970,247970,247970,247970,247970,247970]},{"품번":"1549-156","고객사":"SKF씰","모델":"GM GAMMA (O/S)","기계":"150톤","y2026":[19349,19349,19349,19349,19349,19349,null,null,null,null,null,null],"y2025":[19349,19349,19349,19349,19349,19349,19349,19349,19349,19349,19349,19349]},{"품번":"1549-157","고객사":"SKF씰","모델":"GM GAMMA","기계":"150톤","y2026":[23317,23317,23317,23317,23317,23317,null,null,null,null,null,null],"y2025":[23317,23317,23317,23317,23317,23317,23317,23317,23317,23317,23317,23317]},{"품번":"1551-189","고객사":"SKF씰","모델":"GAMMA","기계":"200톤","y2026":[1469111,1510917,1582982,1586121,1670528,1742560,null,null,null,null,null,null],"y2025":[1106824,1165535,1247019,1285432,1285432,1285432,1341876,1358616,1358616,1416233,1460786,1469111]},{"품번":"1553-101-1","고객사":"SKF씰","모델":"0030","기계":"200톤","y2026":[53917,53917,53917,53917,53917,53917,null,null,null,null,null,null],"y2025":[53917,53917,53917,53917,53917,53917,53917,53917,53917,53917,53917,53917]},{"품번":"1553-101-2","고객사":"SKF씰","모델":"0030","기계":"200톤","y2026":[84599,84599,84599,84599,84599,84599,null,null,null,null,null,null],"y2025":[84599,84599,84599,84599,84599,84599,84599,84599,84599,84599,84599,84599]},{"품번":"1642-118-1","고객사":"SKF씰","모델":"INSERT","기계":"250톤","y2026":[5719,5719,5719,5719,5719,5719,null,null,null,null,null,null],"y2025":[5719,5719,5719,5719,5719,5719,5719,5719,5719,5719,5719,5719]},{"품번":"1654-119-1","고객사":"SKF씰","모델":"INSERT","기계":"250톤","y2026":[243158,261374,261374,261374,261374,261374,null,null,null,null,null,null],"y2025":[200331,200331,200331,200331,200331,200331,200331,225265,225265,225265,225265,243158]},{"품번":"1654-119-2","고객사":"SKF씰","모델":"FLINGER","기계":"200톤","y2026":[138979,159142,159142,159142,159142,159142,null,null,null,null,null,null],"y2025":[115612,115612,115612,115612,115612,115612,115612,138941,138941,138941,138941,138979]},{"품번":"1657-127","고객사":"SKF씰","모델":"SHIELD","기계":"150톤","y2026":[82952,82952,82952,82952,82952,82952,null,null,null,null,null,null],"y2025":[82952,82952,82952,82952,82952,82952,82952,82952,82952,82952,82952,82952]},{"품번":"1657-130","고객사":"SKF씰","모델":"SACC(가공품)","기계":"200톤","y2026":[52606,52606,52606,52606,53511,53511,null,null,null,null,null,null],"y2025":[52606,52606,52606,52606,52606,52606,52606,52606,52606,52606,52606,52606]},{"품번":"1660-131","고객사":"SKF씰","모델":"L38","기계":"200톤","y2026":[309941,309941,309941,309941,309941,309941,null,null,null,null,null,null],"y2025":[176380,176380,176380,202434,202434,202434,202586,206324,308903,309941,309941,309941]},{"품번":"1660-132","고객사":"SKF씰","모델":"L38(가공품)","기계":"150톤","y2026":[322272,357729,357729,357729,357729,357729,null,null,null,null,null,null],"y2025":[210982,210982,210982,210982,210982,210982,210982,258302,322272,322272,322272,322272]},{"품번":"1664-128-1","고객사":"SKF씰","모델":"L43","기계":"150톤","y2026":[87733,87733,87733,87733,87733,87733,null,null,null,null,null,null],"y2025":[87733,87733,87733,87733,87733,87733,87733,87733,87733,87733,87733,87733]},{"품번":"1664-128-2","고객사":"SKF씰","모델":"L43","기계":"200톤","y2026":[55282,55282,55282,55282,55282,55282,null,null,null,null,null,null],"y2025":[55282,55282,55282,55282,55282,55282,55282,55282,55282,55282,55282,55282]},{"품번":"1752-297","고객사":"SKF씰","모델":"KIA","기계":"150톤","y2026":[132130,132130,132130,132130,132130,132130,null,null,null,null,null,null],"y2025":[132130,132130,132130,132130,132130,132130,132130,132130,132130,132130,132130,132130]},{"품번":"1755-296","고객사":"SKF씰","모델":"KIA","기계":"150톤","y2026":[111722,111722,111722,111722,111722,111722,null,null,null,null,null,null],"y2025":[111722,111722,111722,111722,111722,111722,111722,111722,111722,111722,111722,111722]},{"품번":"1781-0001-00","고객사":"SKF씰","모델":"SK OPEN SEAL","기계":"250톤","y2026":[1707835,1707835,1707835,1767190,1808978,1832184,null,null,null,null,null,null],"y2025":[1203010,1204872,1257310,1321053,1321053,1428203,1532058,1532058,1532224,1594025,1594074,1707835]},{"품번":"1807-653","고객사":"SKF씰","모델":"퓨트로닉","기계":"150톤","y2026":[2365009,2365009,2365009,2365009,2365009,2365009,null,null,null,null,null,null],"y2025":[2175877,2182892,2345126,2359073,2365009,2365009,2365009,2365009,2365009,2365009,2365009,2365009]},{"품번":"1853-515-1","고객사":"SKF씰","모델":"6908BA","기계":"150톤","y2026":[86023,86023,86023,86023,86023,86023,null,null,null,null,null,null],"y2025":[86023,86023,86023,86023,86023,86023,86023,86023,86023,86023,86023,86023]},{"품번":"1853-515-2","고객사":"SKF씰","모델":"6908BA","기계":"200톤","y2026":[78342,78342,78342,78342,78342,78342,null,null,null,null,null,null],"y2025":[78342,78342,78342,78342,78342,78342,78342,78342,78342,78342,78342,78342]},{"품번":"1853-586","고객사":"SKF씰","모델":"0106B","기계":"200톤","y2026":[60909,60909,60909,60909,60909,60909,null,null,null,null,null,null],"y2025":[60907,60909,60909,60909,60909,60909,60909,60909,60909,60909,60909,60909]},{"품번":"1858-618","고객사":"SKF씰","모델":"A/S용","기계":"150톤","y2026":[228686,228686,228686,228686,228686,228686,null,null,null,null,null,null],"y2025":[166409,167331,167331,167331,169176,228304,228686,228686,228686,228686,228686,228686]},{"품번":"1858-618-2","고객사":"SKF씰","모델":"PACK SEAL","기계":"150톤","y2026":[73704,73704,73704,73704,73704,73704,null,null,null,null,null,null],"y2025":[50379,50379,73704,73704,73704,73704,73704,73704,73704,73704,73704,73704]},{"품번":"1858-619","고객사":"SKF씰","모델":"A/S용(가공품)","기계":"150톤","y2026":[113475,113475,113475,113475,113475,113475,null,null,null,null,null,null],"y2025":[88631,88631,88631,88631,95264,113429,113475,113475,113475,113475,113475,113475]},{"품번":"1861-596","고객사":"SKF씰","모델":"BMW PL7","기계":"200톤","y2026":[20123,44575,44575,44575,44575,44575,null,null,null,null,null,null],"y2025":[20123,20123,20123,20123,20123,20123,20123,20123,20123,20123,20123,20123]},{"품번":"1861-597","고객사":"SKF씰","모델":"BMW PL7","기계":"150톤","y2026":[25896,25896,25896,25896,25896,25896,null,null,null,null,null,null],"y2025":[25896,25896,25896,25896,25896,25896,25896,25896,25896,25896,25896,25896]},{"품번":"1862-0041-01","고객사":"SKF씰","모델":"FORD V713 (IN)","기계":"250톤","y2026":[2390646,2390646,2390646,2390646,2390646,2390646,null,null,null,null,null,null],"y2025":[2390646,2390646,2390646,2390646,2390646,2390646,2390646,2390646,2390646,2390646,2390646,2390646]},{"품번":"1862-0041-21","고객사":"SKF씰","모델":"FORD V713","기계":"200톤","y2026":[1214676,1214676,1214676,1214676,1214676,1214676,null,null,null,null,null,null],"y2025":[1214676,1214676,1214676,1214676,1214676,1214676,1214676,1214676,1214676,1214676,1214676,1214676]},{"품번":"1862-0042-21","고객사":"SKF씰","모델":"FORD V713 OPEN SEAL","기계":"200톤","y2026":[1129312,1129312,1129312,1129312,1129312,1129312,null,null,null,null,null,null],"y2025":[1129312,1129312,1129312,1129312,1129312,1129312,1129312,1129312,1129312,1129312,1129312,1129312]},{"품번":"1862-651","고객사":"SKF씰","모델":"MP(가공품)","기계":"150톤","y2026":[1184728,1225175,1286061,1404637,1471333,1495263,null,null,null,null,null,null],"y2025":[938606,984131,1011395,1067100,1125139,1125139,1125139,1125139,1152560,1184014,1184728,1184728]},{"품번":"1866-599","고객사":"SKF씰","모델":"ENCODER RING F/M","기계":"250톤","y2026":[7551,7551,7551,7551,7551,7551,null,null,null,null,null,null],"y2025":[7551,7551,7551,7551,7551,7551,7551,7551,7551,7551,7551,7551]},{"품번":"1866-617-1","고객사":"SKF씰","모델":"A/S용","기계":"200톤","y2026":[10093,10093,10093,10093,10093,10093,null,null,null,null,null,null],"y2025":[10093,10093,10093,10093,10093,10093,10093,10093,10093,10093,10093,10093]},{"품번":"1866-617-2","고객사":"SKF씰","모델":"A/S용","기계":"200톤","y2026":[7632,7632,7632,7632,7632,7632,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"1869-621","고객사":"SKF씰","모델":"LY","기계":"200톤","y2026":[527453,527453,527453,527453,527453,527453,null,null,null,null,null,null],"y2025":[527453,527453,527453,527453,527453,527453,527453,527453,527453,527453,527453,527453]},{"품번":"1870-602-1","고객사":"SKF씰","모델":"A/S용","기계":"150톤","y2026":[28218,28218,28218,28218,28218,32434,null,null,null,null,null,null],"y2025":[28218,28218,28218,28218,28218,28218,28218,28218,28218,28218,28218,28218]},{"품번":"1870-602-2","고객사":"SKF씰","모델":"A/S용","기계":"150톤","y2026":[10123,10123,10123,10123,14113,20004,null,null,null,null,null,null],"y2025":[10123,10123,10123,10123,10123,10123,10123,10123,10123,10123,10123,10123]},{"품번":"1871-0043-01","고객사":"SKF씰","모델":"PROGRESSIVE","기계":"250톤","y2026":[96523,96523,96523,96523,96523,96523,null,null,null,null,null,null],"y2025":[96523,96523,96523,96523,96523,96523,96523,96523,96523,96523,96523,96523]},{"품번":"1871-0043-21","고객사":"SKF씰","모델":"VX1","기계":"200톤","y2026":[38985,38985,38985,38985,38985,38985,null,null,null,null,null,null],"y2025":[38985,38985,38985,38985,38985,38985,38985,38985,38985,38985,38985,38985]},{"품번":"1873-0044-21","고객사":"SKF씰","모델":"VX1 SLINGER","기계":"200톤","y2026":[99372,99372,99372,99372,99372,99372,null,null,null,null,null,null],"y2025":[99372,99372,99372,99372,99372,99372,99372,99372,99372,99372,99372,99372]},{"품번":"1873-0045-01","고객사":"SKF씰","모델":"VX1 (O/B) INSERT","기계":"250톤","y2026":[71241,71241,71241,71241,71241,71241,null,null,null,null,null,null],"y2025":[71241,71241,71241,71241,71241,71241,71241,71241,71241,71241,71241,71241]},{"품번":"1874-623","고객사":"SKF씰","모델":"LY(가공품)","기계":"150톤","y2026":[491867,491867,491867,491867,491867,491867,null,null,null,null,null,null],"y2025":[491867,491867,491867,491867,491867,491867,491867,491867,491867,491867,491867,491867]},{"품번":"1888-0005","고객사":"SKF씰","모델":"VS30","기계":"300톤","y2026":[1812056,1893201,1927762,1927762,1958519,2006124,null,null,null,null,null,null],"y2025":[1479396,1479396,1593034,1605803,1650375,1656804,1656804,1656804,1696971,1748387,1803051,1812056]},{"품번":"1945-349-1","고객사":"SKF씰","모델":"RB","기계":"150톤","y2026":[355928,393455,393527,393527,393527,393527,null,null,null,null,null,null],"y2025":[290953,290953,290953,320350,320350,320350,355911,355928,355928,355928,355928,355928]},{"품번":"1945-349-2","고객사":"SKF씰","모델":"RB","기계":"150톤","y2026":[411721,411721,411721,411721,446922,446922,null,null,null,null,null,null],"y2025":[343364,343364,343364,343364,343364,411721,411721,411721,411721,411721,411721,411721]},{"품번":"1946-0053-01","고객사":"SKF씰","모델":"BI3 OPEN SEAL","기계":"250톤","y2026":[1131316,1131316,1131316,1131316,1131316,1193450,null,null,null,null,null,null],"y2025":[844001,869594,869625,869625,869625,900057,938812,974346,974531,1035908,1035908,1131316]},{"품번":"1947-353","고객사":"SKF씰","모델":"MD OPEN SEAL","기계":"150톤","y2026":[50110,50180,50180,50180,50180,50180,null,null,null,null,null,null],"y2025":[32475,32475,32475,32475,32475,32475,32475,32475,50105,50105,50105,50110]},{"품번":"1950-354-1","고객사":"SKF씰","모델":"MD","기계":"150톤","y2026":[26647,26647,26647,26647,26647,26647,null,null,null,null,null,null],"y2025":[26647,26647,26647,26647,26647,26647,26647,26647,26647,26647,26647,26647]},{"품번":"1950-354-2","고객사":"SKF씰","모델":"MD","기계":"150톤","y2026":[24836,24836,24836,24836,24836,24836,null,null,null,null,null,null],"y2025":[14221,14221,14221,14221,14221,14221,14221,14221,24836,24836,24836,24836]},{"품번":"1951-386","고객사":"SKF씰","모델":"YB/RR","기계":"200톤","y2026":[7416518,7753349,7875480,8050641,8138247,8288636,null,null,null,null,null,null],"y2025":[5905633,6009081,6093959,6193687,6261968,6411424,6560995,6760151,6896418,7069935,7266282,7416518]},{"품번":"1952-0056-01","고객사":"SKF씰","모델":"JA PACK SEAL(IN/S)","기계":"200톤","y2026":[5599432,6016434,6133853,6201938,6257288,6380520,null,null,null,null,null,null],"y2025":[4526968,4529305,4661608,4684101,4840570,4877266,4978633,5077527,5190206,5198973,5405670,5599432]},{"품번":"1952-0056-21","고객사":"SKF씰","모델":"JA","기계":"150톤","y2026":[5169378,5573969,5746008,5844651,5870423,5970583,null,null,null,null,null,null],"y2025":[4248750,4248750,4271441,4377987,4436034,4474111,4607215,4685512,4787760,4850061,4925346,5169378]},{"품번":"1952-346-1","고객사":"SKF씰","모델":"YF","기계":"150톤","y2026":[137729,137729,137729,137729,137729,137729,null,null,null,null,null,null],"y2025":[121287,121287,121287,121287,121287,121287,121287,121287,121287,121287,137691,137729]},{"품번":"1952-346-2","고객사":"SKF씰","모델":"FLINGER","기계":"150톤","y2026":[153327,153327,153327,153327,153327,153327,null,null,null,null,null,null],"y2025":[137096,137096,137096,137096,137096,137096,137096,137096,137096,137096,153327,153327]},{"품번":"1952-367-2(2호)","고객사":"SKF씰","모델":"MX-FRT","기계":"200톤","y2026":[3235922,3338928,3398718,3488448,3488486,3488486,null,null,null,null,null,null],"y2025":[2440795,2563413,2617843,2699381,2699381,2760305,2808421,2936363,3048677,3088514,3122058,3235922]},{"품번":"1958-365-1","고객사":"SKF씰","모델":"MD-FRT","기계":"150톤","y2026":[882480,981315,981315,981315,981315,981315,null,null,null,null,null,null],"y2025":[805777,805777,805777,805777,835346,847743,847743,847743,847743,882451,882480,882480]},{"품번":"1958-365-2(2호)","고객사":"SKF씰","모델":"MD-FRT","기계":"200톤","y2026":[647308,684052,684052,684052,747314,753244,null,null,null,null,null,null],"y2025":[520332,520332,520332,574573,574573,574573,574573,574573,647308,647308,647308,647308]},{"품번":"1959-0024-01","고객사":"SKF씰","모델":"TL 4WD RR (IN/S)","기계":"250톤","y2026":[121893,121893,121893,121893,121893,121893,null,null,null,null,null,null],"y2025":[98701,98701,98701,98701,98701,98701,98701,98701,98701,98701,121893,121893]},{"품번":"1959-0024-21","고객사":"SKF씰","모델":"TL4WD RR","기계":"200톤","y2026":[40964,40964,40964,40964,40964,40964,null,null,null,null,null,null],"y2025":[24270,24270,24270,24270,24270,24270,24270,24270,24270,24426,40964,40964]},{"품번":"1960-0031-01","고객사":"SKF씰","모델":"CN7 FRT ECD SEAL","기계":"250톤","y2026":[4964407,5176050,5288572,5396134,5478704,5541180,null,null,null,null,null,null],"y2025":[3943477,4066541,4172618,4276622,4287783,4365202,4478449,4613529,4708792,4799527,4901416,4964407]},{"품번":"1960-0031-21","고객사":"SKF씰","모델":"CN7","기계":"150톤","y2026":[5051222,5265822,5346456,5490737,5653814,5691705,null,null,null,null,null,null],"y2025":[3996123,4125187,4197883,4312755,4312755,4381596,4492752,4610356,4716596,4832762,4897907,5051222]},{"품번":"1960-361","고객사":"SKF씰","모델":"BH-RR","기계":"200톤","y2026":[21902,21902,21902,21902,21902,21902,null,null,null,null,null,null],"y2025":[10730,10730,10730,21902,21902,21902,21902,21902,21902,21902,21902,21902]},{"품번":"1962-0030","고객사":"SKF씰","모델":"SU2 RR OPEN SEAL","기계":"250톤","y2026":[2095567,2249832,2307599,2319942,2319942,2346275,null,null,null,null,null,null],"y2025":[1712515,1712515,1712515,1712515,1800063,1822177,1873376,1960093,1960093,1964433,2031779,2095567]},{"품번":"1963-0055-01","고객사":"SKF씰","모델":"GSR PACK SEAL","기계":"205톤","y2026":[42977,84487,84487,84487,84487,103511,null,null,null,null,null,null],"y2025":[36887,36887,36887,36887,36887,36887,36887,36887,36887,36887,42977,42977]},{"품번":"1965-326-1","고객사":"SKF씰","모델":"0187","기계":"150톤","y2026":[92355,92355,92355,92355,92355,92355,null,null,null,null,null,null],"y2025":[92355,92355,92355,92355,92355,92355,92355,92355,92355,92355,92355,92355]},{"품번":"1965-326-2","고객사":"SKF씰","모델":"0187","기계":"200톤","y2026":[78070,78070,78070,78070,78070,78070,null,null,null,null,null,null],"y2025":[78070,78070,78070,78070,78070,78070,78070,78070,78070,78070,78070,78070]},{"품번":"1967-0052-01","고객사":"SKF씰","모델":"US4 RR (IN)","기계":"250톤","y2026":[98890,98890,98890,98890,98890,98890,null,null,null,null,null,null],"y2025":[98890,98890,98890,98890,98890,98890,98890,98890,98890,98890,98890,98890]},{"품번":"1967-0052-21","고객사":"SKF씰","모델":"US4 RR (IN)","기계":"250톤","y2026":[18940,18940,18940,18940,18940,18940,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"1967-391","고객사":"SKF씰","모델":"IK/CK","기계":"250톤","y2026":[13318213,13798453,13919810,14171580,14291569,14491535,null,null,null,null,null,null],"y2025":[10360958,10629094,10857349,11114245,11349866,11665834,11897637,12259962,12674007,12949885,13179880,13318213]},{"품번":"1967-392","고객사":"SKF씰","모델":"IK/CK","기계":"200톤","y2026":[141568,141682,141682,141682,141682,141682,null,null,null,null,null,null],"y2025":[113261,113261,113261,113261,113261,113261,113261,113261,113261,113261,141561,141568]},{"품번":"1968-0016-01","고객사":"SKF씰","모델":"LF-FRT INSERT","기계":"150톤","y2026":[1707685,1707685,1707685,1730178,1730178,1760131,null,null,null,null,null,null],"y2025":[1685699,1707685,1707685,1707685,1707685,1707685,1707685,1707685,1707685,1707685,1707685,1707685]},{"품번":"1968-0016-02","고객사":"SKF씰","모델":"LF-FRT-FLINGER","기계":"250톤","y2026":[1473144,1473144,1473144,1473144,1473144,1518705,null,null,null,null,null,null],"y2025":[1445335,1473132,1473132,1473144,1473144,1473144,1473144,1473144,1473144,1473144,1473144,1473144]},{"품번":"1968-362","고객사":"SKF씰","모델":"BH-FRT","기계":"200톤","y2026":[38240,38240,38240,38240,38240,38240,null,null,null,null,null,null],"y2025":[17003,24535,24535,24535,24535,24535,24535,24535,24535,24535,38240,38240]},{"품번":"1968-364-1","고객사":"SKF씰","모델":"DM-FRT","기계":"150톤","y2026":[110465,110465,110465,110465,110465,110465,null,null,null,null,null,null],"y2025":[87064,87590,110465,110465,110465,110465,110465,110465,110465,110465,110465,110465]},{"품번":"1968-364-2","고객사":"SKF씰","모델":"DM-FRT","기계":"150톤","y2026":[91615,91615,91615,91615,91615,91615,null,null,null,null,null,null],"y2025":[61026,61026,91615,91615,91615,91615,91615,91615,91615,91615,91615,91615]},{"품번":"1969-0030-01","고객사":"SKF씰","모델":"CN7 RR OPEN SEAL","기계":"250톤","y2026":[6759542,6973401,7190449,7386802,7540701,7736778,null,null,null,null,null,null],"y2025":[4669397,4884943,5053481,5315251,5552867,5759749,5999451,6234518,6305400,6467733,6549133,6759542]},{"품번":"1970-363","고객사":"SKF씰","모델":"비대칭베어링","기계":"150톤","y2026":[620250,620250,620250,620250,620250,620250,null,null,null,null,null,null],"y2025":[620250,620250,620250,620250,620250,620250,620250,620250,620250,620250,620250,620250]},{"품번":"1970-372-1","고객사":"SKF씰","모델":"GM31XXN","기계":"150톤","y2026":[488026,488026,488026,488026,495549,512204,null,null,null,null,null,null],"y2025":[459672,459672,459672,459672,459672,459672,488026,488026,488026,488026,488026,488026]},{"품번":"1970-372-2","고객사":"SKF씰","모델":"GM31XXN","기계":"200톤","y2026":[476200,476200,476200,476200,522777,557057,null,null,null,null,null,null],"y2025":[476200,476200,476200,476200,476200,476200,476200,476200,476200,476200,476200,476200]},{"품번":"1972-383","고객사":"SKF씰","모델":"HI OPEN SEAL","기계":"200톤","y2026":[17008890,17438250,17659712,17974860,18081231,18395029,null,null,null,null,null,null],"y2025":[13355971,13733163,14167538,14528207,14797796,15207257,15481045,15882195,16297487,16473381,16719939,17008890]},{"품번":"1973-325","고객사":"SKF씰","모델":"0177","기계":"250톤","y2026":[68616,68616,68616,68616,68616,68616,null,null,null,null,null,null],"y2025":[68616,68616,68616,68616,68616,68616,68616,68616,68616,68616,68616,68616]},{"품번":"1973-370(375)","고객사":"SKF씰","모델":"DH(가공품)","기계":"150톤","y2026":[209454,209454,209454,209454,209454,209454,null,null,null,null,null,null],"y2025":[130083,175592,175592,175592,175592,175592,175592,175592,175592,175592,175592,209454]},{"품번":"1974-0023-01","고객사":"SKF씰","모델":"UM PACK SEAL","기계":"250톤","y2026":[160194,160194,160194,160194,160194,160194,null,null,null,null,null,null],"y2025":[160194,160194,160194,160194,160194,160194,160194,160194,160194,160194,160194,160194]},{"품번":"1974-0023-21","고객사":"SKF씰","모델":"UM F/L","기계":"200톤","y2026":[150026,150026,150026,150026,150026,150026,null,null,null,null,null,null],"y2025":[126825,126854,126854,126854,126854,126854,126854,126854,126854,150026,150026,150026]},{"품번":"1976-0004-01","고객사":"SKF씰","모델":"RG3 ENCODER RING","기계":"150톤","y2026":[149282,181732,181732,181732,181732,181732,null,null,null,null,null,null],"y2025":[102666,125834,125834,149276,149282,149282,149282,149282,149282,149282,149282,149282]},{"품번":"1979-0051-01","고객사":"SKF씰","모델":"US4 RR OPEN SEAL","기계":"250톤","y2026":[607622,641148,641148,681184,681258,720288,null,null,null,null,null,null],"y2025":[469127,469218,531691,531755,531755,531755,574083,574083,574083,574083,600834,607622]},{"품번":"1982-371","고객사":"SKF씰","모델":"GM31XXN","기계":"150톤","y2026":[545783,590315,590315,590315,590333,618802,null,null,null,null,null,null],"y2025":[513428,513428,517774,517774,530560,530560,545601,545601,545783,545783,545783,545783]},{"품번":"C657-127","고객사":"SKF씰","모델":"0176","기계":"150톤","y2026":[29558,29558,29558,29558,29558,29558,null,null,null,null,null,null],"y2025":[29558,29558,29558,29558,29558,29558,29558,29558,29558,29558,29558,29558]},{"품번":"C873-622-2","고객사":"SKF씰","모델":"LY","기계":"200톤","y2026":[487997,487997,487997,487997,487997,487997,null,null,null,null,null,null],"y2025":[487997,487997,487997,487997,487997,487997,487997,487997,487997,487997,487997,487997]},{"품번":"1839-629","고객사":"SKF씰","모델":"ENCODER RING","기계":"80톤","y2026":[null,null,null,null,null,null,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"1GE0-0009-01","고객사":"SKF씰","모델":"","기계":"","y2026":[null,3806,3806,3806,3806,3806,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"AB3038-SC","고객사":"일진글로벌","모델":"JC/JF 씰링캡","기계":"300톤","y2026":[78685,78685,78685,78685,78685,78685,null,null,null,null,null,null],"y2025":[48275,48275,48275,48275,48275,48275,48275,75620,78685,78685,78685,78685]},{"품번":"AB3248-SC-01","고객사":"일진글로벌","모델":"9BUX","기계":"300톤","y2026":[1955472,2129207,2129207,2162200,2230509,2378132,null,null,null,null,null,null],"y2025":[1307578,1307578,1334585,1456971,1593644,1671643,1671643,1733239,1785301,1897198,1941201,1955472]},{"품번":"AT3037-GC-00","고객사":"일진글로벌","모델":"T1XX","기계":"300톤","y2026":[1432456,1483712,1483712,1535017,1548589,1590910,null,null,null,null,null,null],"y2025":[1127613,1127613,1181729,1241998,1241998,1316498,1331320,1331320,1378803,1378803,1378803,1432456]},{"품번":"IW/OW-BDA-1106-1","고객사":"SKF SBC","모델":"Raceway(CA/CB)","기계":"300톤","y2026":[15148362,15418436,15749413,15999647,15999647,15999647,null,null,null,null,null,null],"y2025":[12795775,12990771,13211506,13582706,13796245,13889585,14100564,14171255,14590164,14819560,15097047,15148362]},{"품번":"IW/OW-BDA-1106-2","고객사":"SKF SBC","모델":"Raceway CA/CB","기계":"300톤","y2026":[15896972,16084836,16085269,16085269,16239628,16287775,null,null,null,null,null,null],"y2025":[13523486,13548745,13756491,14002240,14019859,14136374,14312312,14552789,14939550,15286202,15598738,15896972]},{"품번":"IW/OW-BDA-1113-1","고객사":"SKF SBC","모델":"Raceway(AA/E)","기계":"300톤","y2026":[28955355,28955355,28955355,28955355,28955355,28955355,null,null,null,null,null,null],"y2025":[27826370,28069566,28377806,28787003,28826554,28826554,28826554,28826554,28853666,28955355,28955355,28955355]},{"품번":"IW/OW-BDA-1113-2","고객사":"SKF SBC","모델":"Raceway AA/E","기계":"300톤","y2026":[7820738,8125512,8348655,8532254,8807121,8952518,null,null,null,null,null,null],"y2025":[5632737,5640459,5640459,5713416,5865996,6060679,6302299,6630066,6954373,7299116,7571452,7820738]},{"품번":"IW/OW-BDA-1113D","고객사":"SKF SBC","모델":"IW/OW RING(SKF KOREA)","기계":"300톤","y2026":[6855538,6890283,7061368,7061368,7061368,7061368,null,null,null,null,null,null],"y2025":[6704867,6704867,6704867,6704867,6704867,6704867,6704867,6704867,6752755,6752755,6855538,6855538]},{"품번":"IW/OW-BDA-1124BA","고객사":"SKF SBC","모델":"Receway 1124","기계":"300톤","y2026":[3477027,3477027,3477027,3477027,3477027,3477027,null,null,null,null,null,null],"y2025":[3477027,3477027,3477027,3477027,3477027,3477027,3477027,3477027,3477027,3477027,3477027,3477027]},{"품번":"IW/OW-BDA-1156","고객사":"SKF SBC","모델":"Raceway 1156","기계":"300톤","y2026":[1852403,1852403,1852403,1852403,1852403,1852403,null,null,null,null,null,null],"y2025":[1686834,1742020,1789888,1835522,1852403,1852403,1852403,1852403,1852403,1852403,1852403,1852403]},{"품번":"IW/OW-BDA-1159B","고객사":"SKF SBC","모델":"Raceway 1159B","기계":"300톤","y2026":[4846619,5129637,5184414,5442510,5694419,5796937,null,null,null,null,null,null],"y2025":[3101192,3183632,3395583,3487448,3595901,3837512,3889513,4113097,4218477,4467367,4651285,4846619]},{"품번":"IW/OW-BDA-1165A","고객사":"SKF SBC","모델":"Raceway 1165","기계":"300톤","y2026":[1029555,1106640,1106640,1171602,1171602,1218448,null,null,null,null,null,null],"y2025":[695702,729983,729983,807520,838478,838478,875787,875884,903916,952874,1007701,1029555]},{"품번":"IW/OW-BDA-1179-1","고객사":"SKF SBC","모델":"Raceway1179-1","기계":"300톤","y2026":[10262269,10297588,10414666,10539057,10539057,10539057,null,null,null,null,null,null],"y2025":[10059304,10059304,10059304,10059304,10059304,10059304,10059304,10153201,10194857,10200141,10210023,10262269]},{"품번":"IW/OW-BDA-1179-2","고객사":"SKF SBC","모델":"Raceway 1179-2","기계":"300톤","y2026":[6456830,6921537,7194741,7530842,7756504,7828650,null,null,null,null,null,null],"y2025":[4077318,4247015,4247015,4590655,4840868,5076199,5376009,5630220,5812270,6019648,6198806,6456830]},{"품번":"48338-2H010","고객사":"부강스프링","모델":"48338-2H010","기계":"300톤","y2026":[1321633,1379846,1443133,1484895,1539469,1577451,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"45631-26010C","고객사":"부강스프링","모델":"45631-26010C","기계":"300톤","y2026":[16869790,16893463,16893463,16923860,16933285,16943789,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"45631-26010B","고객사":"부강스프링","모델":"45631-26010B","기계":"300톤","y2026":[159609,183481,184254,213952,228400,234226,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"45631-26010A","고객사":"부강스프링","모델":"45631-26010A","기계":"300톤","y2026":[145658,203663,234602,234602,250927,258722,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"45631-26010 B/C","고객사":"부강스프링","모델":"45631-26010 B/C","기계":"300톤","y2026":[16578,16578,16578,16578,16578,16578,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"45624-2F010-U","고객사":"부강스프링","모델":"45624-2F010-U","기계":"300톤","y2026":[174893,186479,200993,200993,200993,219272,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"45624-2F010-L","고객사":"부강스프링","모델":"45624-2F010-L","기계":"300톤","y2026":[179171,199282,199282,199282,205027,239965,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"45524-26210","고객사":"부강스프링","모델":"45524-26210","기계":"300톤","y2026":[304807,360780,370128,370128,370128,414753,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"116090-ST2","고객사":"진양오일씰","모델":"ENCODER RING","기계":"250톤","y2026":[null,104486,110276,147975,150250,150250,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]},{"품번":"116080-ST0","고객사":"진양오일씰","모델":"ENCODER RING","기계":"250톤","y2026":[null,null,19870,22899,42769,null,null,null,null,null,null,null],"y2025":[null,null,null,null,null,null,null,null,null,null,null,null]}];
+const CYCLE={'A등급':12,'B등급':6,'C등급':3,'F등급':0};
+const SCORE={'A등급':'20점 이하','B등급':'21~38점','C등급':'39점 이상','F등급':'해당무'};
+const CYCTXT={'A등급':'1회/년','B등급':'1회/6개월','C등급':'1회/3개월','F등급':'사용시'};
+
+const HIST_SEED=[{"id":1785000000001,"품번":"1515-196","고객사":"SKF씰","금형번호":"16DHA205A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":1628252,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000008,"품번":"1553-101-1","고객사":"SKF씰","금형번호":"7DHA003","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":53917,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000015,"품번":"1657-130","고객사":"SKF씰","금형번호":"12DHA210A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":52606,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000022,"품번":"1755-296","고객사":"SKF씰","금형번호":"12DHA208A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":111722,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000029,"품번":"1853-586","고객사":"SKF씰","금형번호":"08DHA086","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":60909,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000036,"품번":"1862-0041-01","고객사":"SKF씰","금형번호":"20DHA202A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":2390646,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000043,"품번":"1870-602-1","고객사":"SKF씰","금형번호":"10DHA223","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":28218,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000050,"품번":"1874-623","고객사":"SKF씰","금형번호":"10DHA249A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":491867,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000057,"품번":"1950-354-1","고객사":"SKF씰","금형번호":"10DHA201A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":26647,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000064,"품번":"1952-346-2","고객사":"SKF씰","금형번호":"11DHA213A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":153327,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000071,"품번":"1960-0031-01","고객사":"SKF씰","금형번호":"19DHA203A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":4964407,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000078,"품번":"1967-0052-01","고객사":"SKF씰","금형번호":"20DHA209A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":98890,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000085,"품번":"1968-364-1","고객사":"SKF씰","금형번호":"12DHA201A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":110465,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000092,"품번":"1972-383","고객사":"SKF씰","금형번호":"15DHA209A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":17008890,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000099,"품번":"1979-0051-01","고객사":"SKF씰","금형번호":"20DHA211A","등급":"B등급","점검일":"2026-01-31","점검자":"강영태","타발수":607622,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000106,"품번":"IW/OW-BDA-1113D","고객사":"SKF SBC","금형번호":"19ACA207A","등급":"B등급","점검일":"2026-01-31","점검자":"유성환","타발수":6855538,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000113,"품번":"IW/OW-BDA-1179-2","고객사":"SKF SBC","금형번호":"21TJA201A_2","등급":"B등급","점검일":"2026-01-31","점검자":"유성환","타발수":6456830,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000003,"품번":"1547-102-1","고객사":"SKF씰","금형번호":"1DHA089","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":122480,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000010,"품번":"1553-101-2","고객사":"SKF씰","금형번호":"0DHA040","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":84599,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000017,"품번":"1660-131","고객사":"SKF씰","금형번호":"12DHA213A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":309941,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000024,"품번":"1781-0001-00","고객사":"SKF씰","금형번호":"17DHA205A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":1707835,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000031,"품번":"1858-618","고객사":"SKF씰","금형번호":"10DHA238A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":228686,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000038,"품번":"1862-0041-21","고객사":"SKF씰","금형번호":"20DHA203A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":1214676,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000045,"품번":"1870-602-2","고객사":"SKF씰","금형번호":"10DHA224","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":10123,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000052,"품번":"1888-0005","고객사":"SKF씰","금형번호":"16DHA209A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":1893201,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000059,"품번":"1950-354-2","고객사":"SKF씰","금형번호":"10DHA202A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":24836,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000066,"품번":"1952-367-2(2호)","고객사":"SKF씰","금형번호":"12DHA212A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":3338928,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000073,"품번":"1960-0031-21","고객사":"SKF씰","금형번호":"19DHA204A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":5265822,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000080,"품번":"1967-391","고객사":"SKF씰","금형번호":"16DHA206A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":13798453,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000087,"품번":"1968-364-2","고객사":"SKF씰","금형번호":"12DHA202A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":91615,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000094,"품번":"1973-325","고객사":"SKF씰","금형번호":"6DHA039","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":68616,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000101,"품번":"1982-371","고객사":"SKF씰","금형번호":"13DHA206A","등급":"B등급","점검일":"2026-02-28","점검자":"강영태","타발수":590315,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000115,"품번":"AB3038-SC","고객사":"일진글로벌","금형번호":"15IGA211A","등급":"B등급","점검일":"2026-02-28","점검자":"왕석주","타발수":78685,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000108,"품번":"IW/OW-BDA-1124BA","고객사":"SKF SBC","금형번호":"18CAA208A","등급":"B등급","점검일":"2026-02-28","점검자":"유성환","타발수":3477027,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000004,"품번":"1547-102-2","고객사":"SKF씰","금형번호":"1DHA088","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":247970,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000011,"품번":"1642-118-1","고객사":"SKF씰","금형번호":"1DHA102","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":5719,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000018,"품번":"1660-132","고객사":"SKF씰","금형번호":"13DHA201A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":357729,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000025,"품번":"1807-653","고객사":"SKF씰","금형번호":"15DHA214A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":2365009,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000032,"품번":"1858-618-2","고객사":"SKF씰","금형번호":"10DHA239","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":73704,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000039,"품번":"1862-0042-21","고객사":"SKF씰","금형번호":"20DHA204A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":1129312,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000046,"품번":"1871-0043-01","고객사":"SKF씰","금형번호":"20DHA205A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":96523,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000053,"품번":"1945-349-1","고객사":"SKF씰","금형번호":"10DHA205A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":393527,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000060,"품번":"1951-386","고객사":"SKF씰","금형번호":"16DHA202A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":7875480,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000067,"품번":"1958-365-1","고객사":"SKF씰","금형번호":"12DHA203A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":981315,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000074,"품번":"1960-361","고객사":"SKF씰","금형번호":"12DHA216A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":21902,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000081,"품번":"1967-392","고객사":"SKF씰","금형번호":"16DHA207A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":141682,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000088,"품번":"1969-0030-01","고객사":"SKF씰","금형번호":"19DHA205A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":7190449,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000095,"품번":"1973-370(375)","고객사":"SKF씰","금형번호":"13DHA202A","등급":"B등급","점검일":"2026-03-31","점검자":"강영태","타발수":209454,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000116,"품번":"AB3248-SC-01","고객사":"일진글로벌","금형번호":"18IGA203A","등급":"B등급","점검일":"2026-03-31","점검자":"왕석주","타발수":2129207,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000102,"품번":"IW/OW-BDA-1106-1","고객사":"SKF SBC","금형번호":"14DFA209A","등급":"B등급","점검일":"2026-03-31","점검자":"유성환","타발수":15749413,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000109,"품번":"IW/OW-BDA-1156","고객사":"SKF SBC","금형번호":"22SKA201A","등급":"B등급","점검일":"2026-03-31","점검자":"유성환","타발수":1852403,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000005,"품번":"1549-156","고객사":"SKF씰","금형번호":"10DHA209","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":19349,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000012,"품번":"1654-119-1","고객사":"SKF씰","금형번호":"1DHA103","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":261374,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000019,"품번":"1664-128-1","고객사":"SKF씰","금형번호":"12DHA206A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":87733,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000026,"품번":"1839-629","고객사":"SKF씰","금형번호":"11DHA209","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":"","연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000033,"품번":"1858-619","고객사":"SKF씰","금형번호":"10DHA239A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":113475,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000040,"품번":"1862-651","고객사":"SKF씰","금형번호":"15DHA207A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":1404637,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000047,"품번":"1871-0043-21","고객사":"SKF씰","금형번호":"20DHA206A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":38985,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000054,"품번":"1945-349-2","고객사":"SKF씰","금형번호":"10DHA235A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":411721,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000061,"품번":"1952-0056-01","고객사":"SKF씰","금형번호":"18DHA214A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":6201938,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000068,"품번":"1958-365-2(2호)","고객사":"SKF씰","금형번호":"18TJA209A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":684052,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000075,"품번":"1962-0030","고객사":"SKF씰","금형번호":"18DHA202A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":2319942,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000082,"품번":"1968-0016-01","고객사":"SKF씰","금형번호":"18DHA201A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":1730178,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000089,"품번":"1970-363","고객사":"SKF씰","금형번호":"11DHA216","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":620250,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000096,"품번":"1974-0023-01","고객사":"SKF씰","금형번호":"18DHA226A","등급":"B등급","점검일":"2026-04-30","점검자":"강영태","타발수":160194,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000117,"품번":"AT3037-GC-00","고객사":"일진글로벌","금형번호":"17IGA201A","등급":"B등급","점검일":"2026-04-30","점검자":"왕석주","타발수":1535017,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000103,"품번":"IW/OW-BDA-1106-2","고객사":"SKF SBC","금형번호":"14DFA209B","등급":"B등급","점검일":"2026-04-30","점검자":"유성환","타발수":16085269,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000110,"품번":"IW/OW-BDA-1159B","고객사":"SKF SBC","금형번호":"19RDA613A","등급":"B등급","점검일":"2026-04-30","점검자":"유성환","타발수":5442510,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000006,"품번":"1549-157","고객사":"SKF씰","금형번호":"10DHA207","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":23317,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000013,"품번":"1654-119-2","고객사":"SKF씰","금형번호":"1DHA105","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":159142,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000020,"품번":"1664-128-2","고객사":"SKF씰","금형번호":"12DHA207A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":55282,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000027,"품번":"1853-515-1","고객사":"SKF씰","금형번호":"9DHA036A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":86023,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000034,"품번":"1861-596","고객사":"SKF씰","금형번호":"10DHA214A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":44575,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000041,"품번":"1866-599","고객사":"SKF씰","금형번호":"10DHA221","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":7551,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000048,"품번":"1873-0044-21","고객사":"SKF씰","금형번호":"20DHA207A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":99372,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000055,"품번":"1946-0053-01","고객사":"SKF씰","금형번호":"19DHA206A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":1131316,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000062,"품번":"1952-0056-21","고객사":"SKF씰","금형번호":"18DHA215A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":5870423,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000069,"품번":"1959-0024-01","고객사":"SKF씰","금형번호":"17DHA212A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":121893,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000076,"품번":"1965-326-1","고객사":"SKF씰","금형번호":"6DHA037","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":92355,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000083,"품번":"1968-0016-02","고객사":"SKF씰","금형번호":"17DHA207A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":1473144,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000090,"품번":"1970-372-1","고객사":"SKF씰","금형번호":"13DHA204A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":495549,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000097,"품번":"1974-0023-21","고객사":"SKF씰","금형번호":"18DHA227A","등급":"B등급","점검일":"2026-05-31","점검자":"강영태","타발수":150026,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000104,"품번":"IW/OW-BDA-1113-1","고객사":"SKF SBC","금형번호":"16DFA201A","등급":"B등급","점검일":"2026-05-31","점검자":"유성환","타발수":28955355,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000111,"품번":"IW/OW-BDA-1165A","고객사":"SKF SBC","금형번호":"20CAA214A","등급":"B등급","점검일":"2026-05-31","점검자":"유성환","타발수":1171602,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000007,"품번":"1551-189","고객사":"SKF씰","금형번호":"14DHA212A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":1742560,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000014,"품번":"1657-127","고객사":"SKF씰","금형번호":"7DHA051","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":82952,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000021,"품번":"1752-297","고객사":"SKF씰","금형번호":"12DHA209A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":132130,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000028,"품번":"1853-515-2","고객사":"SKF씰","금형번호":"9DHA033","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":78342,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000035,"품번":"1861-597","고객사":"SKF씰","금형번호":"10DHA215A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":25896,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000042,"품번":"1866-617-1","고객사":"SKF씰","금형번호":"10DHA236A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":10093,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000049,"품번":"1873-0045-01","고객사":"SKF씰","금형번호":"20DHA208A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":71241,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000056,"품번":"1947-353","고객사":"SKF씰","금형번호":"10DHA203","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":50180,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000063,"품번":"1952-346-1","고객사":"SKF씰","금형번호":"10DHA240","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":137729,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000070,"품번":"1959-0024-21","고객사":"SKF씰","금형번호":"17DHA213A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":40964,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000077,"품번":"1965-326-2","고객사":"SKF씰","금형번호":"6DHA038A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":78070,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000084,"품번":"1968-362","고객사":"SKF씰","금형번호":"12DHA215A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":38240,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000091,"품번":"1970-372-2","고객사":"SKF씰","금형번호":"13DHA205A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":557057,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000098,"품번":"1976-0004-01","고객사":"SKF씰","금형번호":"19DHA201A","등급":"B등급","점검일":"2026-06-30","점검자":"강영태","타발수":181732,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000105,"품번":"IW/OW-BDA-1113-2","고객사":"SKF SBC","금형번호":"21RDA601A","등급":"B등급","점검일":"2026-06-30","점검자":"유성환","타발수":8952518,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000112,"품번":"IW/OW-BDA-1179-1","고객사":"SKF SBC","금형번호":"19SKA202A","등급":"B등급","점검일":"2026-06-30","점검자":"유성환","타발수":10539057,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000002,"품번":"1515-196","고객사":"SKF씰","금형번호":"16DHA205A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":1704356,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000009,"품번":"1553-101-1","고객사":"SKF씰","금형번호":"7DHA003","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":53917,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000016,"품번":"1657-130","고객사":"SKF씰","금형번호":"12DHA210A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":53511,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000023,"품번":"1755-296","고객사":"SKF씰","금형번호":"12DHA208A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":111722,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000030,"품번":"1853-586","고객사":"SKF씰","금형번호":"08DHA086","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":60909,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000037,"품번":"1862-0041-01","고객사":"SKF씰","금형번호":"20DHA202A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":2390646,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000044,"품번":"1870-602-1","고객사":"SKF씰","금형번호":"10DHA223","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":32434,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000051,"품번":"1874-623","고객사":"SKF씰","금형번호":"10DHA249A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":491867,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000058,"품번":"1950-354-1","고객사":"SKF씰","금형번호":"10DHA201A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":26647,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000065,"품번":"1952-346-2","고객사":"SKF씰","금형번호":"11DHA213A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":153327,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000072,"품번":"1960-0031-01","고객사":"SKF씰","금형번호":"19DHA203A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":5541180,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000079,"품번":"1967-0052-01","고객사":"SKF씰","금형번호":"20DHA209A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":98890,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000086,"품번":"1968-364-1","고객사":"SKF씰","금형번호":"12DHA201A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":110465,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000093,"품번":"1972-383","고객사":"SKF씰","금형번호":"15DHA209A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":18395029,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000100,"품번":"1979-0051-01","고객사":"SKF씰","금형번호":"20DHA211A","등급":"B등급","점검일":"2026-07-30","점검자":"강영태","타발수":720288,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000107,"품번":"IW/OW-BDA-1113D","고객사":"SKF SBC","금형번호":"19ACA207A","등급":"B등급","점검일":"2026-07-30","점검자":"유성환","타발수":7061368,"연마":"","판정":"합격","불량":"","특이":"","조치":""},{"id":1785000000114,"품번":"IW/OW-BDA-1179-2","고객사":"SKF SBC","금형번호":"21TJA201A_2","등급":"B등급","점검일":"2026-07-30","점검자":"유성환","타발수":7828650,"연마":"","판정":"합격","불량":"","특이":"","조치":""}];
+let HIST=HIST_SEED.map(x=>Object.assign({},x,{항목:ITEMS.map(it=>({부위:it.구분+' '+it.부위,결과:'양호'}))}));
+let PLAN={};            // {품번:[배정월...]}            // {id,품번,금형번호,등급,점검일,점검자,타발수,연마,판정,불량,항목,특이,조치}
+let sb=null, filter='all', cur=null, judge={};
+
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const today=()=>new Date().toISOString().slice(0,10);
+const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200)};
+const addM=(d,m)=>{const x=new Date(d);x.setMonth(x.getMonth()+m);return x};
+const days=(a,b)=>Math.round((a-b)/864e5);
+
+function lastOf(pn){
+  const h=HIST.filter(x=>x.품번===pn).sort((a,b)=>b.점검일.localeCompare(a.점검일));
+  return h[0]||null;
+}
+function state(m){
+  const cyc=CYCLE[m.등급]||0;
+  if(!cyc) return {k:'na',dd:null,last:null,next:null,pct:0};
+  const l=lastOf(m.품번);
+  if(!l) return {k:'never',dd:null,last:null,next:null,pct:100};
+  const next=addM(l.점검일,cyc), dd=days(next,new Date(today()));
+  const total=cyc*30.44, used=Math.min(Math.max(total-dd,0),total);
+  let k = dd<0?'over' : dd<=30?'soon' : 'ok';
+  return {k,dd,last:l.점검일,next:next.toISOString().slice(0,10),pct:Math.round(used/total*100)};
+}
+function render(){
+  const q=$('#q').value.trim().toLowerCase(), g=$('#fg').value, c=$('#fc').value;
+  let n={total:0,over:0,soon:0,ok:0};
+  const yr=today().slice(0,4);
+  let doneYr=0, tgt=0;
+  const rows=MOLDS.map(m=>({m,s:state(m)}));
+  rows.forEach(({m,s})=>{
+    if(s.k==='na')return;
+    if(c&&m.고객사!==c)return;
+    n.total++; tgt++;
+    if(s.k==='over'||s.k==='never')n.over++; else if(s.k==='soon')n.soon++; else n.ok++;
+    if(HIST.some(h=>h.품번===m.품번&&h.점검일.startsWith(yr)))doneYr++;
+  });
+  $('#s-total').textContent=n.total; $('#s-over').textContent=n.over;
+  $('#s-soon').textContent=n.soon; $('#s-ok').textContent=n.ok;
+  $('#s-rate').textContent=tgt?Math.round(doneYr/tgt*100)+'%':'0%';
+  $('#s-scope').textContent=c?'점검 대상 · '+c:'점검 대상';
+  renderCust(rows);
+
+  const out=rows.filter(({m,s})=>{
+    if(c&&m.고객사!==c)return false;
+    if(g&&m.등급!==g)return false;
+    if(q&&!(m.품번.toLowerCase().includes(q)||(m.금형번호||'').toLowerCase().includes(q)))return false;
+    if(filter==='all')return true;
+    if(filter==='over')return s.k==='over'||s.k==='never';
+    if(filter==='never')return s.k==='never';
+    return s.k===filter;
+  }).sort((a,b)=>{
+    const r={never:0,over:1,soon:2,ok:3,na:4};
+    if(r[a.s.k]!==r[b.s.k])return r[a.s.k]-r[b.s.k];
+    return (a.s.dd??-9999)-(b.s.dd??-9999);
+  });
+
+  $('#list').innerHTML = out.length? out.map(({m,s})=>{
+    const cls={over:'bad',never:'bad',soon:'warn',ok:'ok',na:'na'}[s.k];
+    const ddTxt = s.k==='never'?'미점검' : s.k==='na'?'사용시' : (s.dd<0?`D+${-s.dd}`:`D-${s.dd}`);
+    const ddSub = s.k==='never'?'점검 이력 없음' : s.k==='na'?'정기점검 대상 외' : (s.dd<0?'주기 초과':'다음 점검까지');
+    return `<div class="row s-${cls}" data-pn="${m.품번}" tabindex="0" role="button">
+      <div><div class="pn">${m.품번}<span class="badge b-${m.등급[0]}">${m.등급}</span></div>
+        <div class="mn">${m.고객사} · ${m.금형번호||'금형번호 미등록'} · ${CYCTXT[m.등급]}${GRD[m.품번]?' · 등급평가 '+GRD[m.품번].총점+'점':''}</div></div>
+      <div class="gauge">
+        <div class="lbl">${s.last?'최근 '+s.last:'—'}</div>
+        <div class="due">${s.next?'예정 '+s.next:''}</div>
+        <div class="track"><div class="fill f-${cls}" style="width:${s.pct}%"></div></div>
+      </div>
+      <div class="dd"><b class="t-${cls}">${ddTxt}</b><span>${ddSub}</span></div>
+    </div>`}).join('')
+    : `<div class="empty"><b>해당하는 금형이 없습니다</b>필터 또는 검색어를 바꿔 보세요.</div>`;
+
+  $$('#list .row').forEach(r=>{
+    const open=()=>openM(r.dataset.pn);
+    r.onclick=open;
+    r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open()}};
+  });
+  renderHist(); renderPlan(); renderShot(); renderGrade();
+}
+function renderCust(rows){
+  const yr=today().slice(0,4);
+  const body=CUSTS.map(c=>{
+    const mine=rows.filter(x=>x.m.고객사===c);
+    const tg=mine.filter(x=>x.s.k!=='na');
+    const over=tg.filter(x=>x.s.k==='over'||x.s.k==='never').length;
+    const soon=tg.filter(x=>x.s.k==='soon').length;
+    const ok=tg.filter(x=>x.s.k==='ok').length;
+    const na=mine.length-tg.length;
+    const done=tg.filter(x=>HIST.some(h=>h.품번===x.m.품번&&h.점검일.startsWith(yr))).length;
+    const rate=tg.length?Math.round(done/tg.length*100):0;
+    return `<tr><td><b>${c}</b></td>
+      <td style="font-family:var(--mono)">${tg.length}품번</td>
+      <td style="font-family:var(--mono)" class="${over?'t-bad':''}">${over}</td>
+      <td style="font-family:var(--mono)" class="${soon?'t-warn':''}">${soon}</td>
+      <td style="font-family:var(--mono)">${ok}</td>
+      <td style="font-family:var(--mono);color:var(--muted)">${na}</td>
+      <td style="font-family:var(--mono)"><b>${rate}%</b></td></tr>`;
+  }).join('');
+  const tg=rows.filter(x=>x.s.k!=='na');
+  const doneAll=tg.filter(x=>HIST.some(h=>h.품번===x.m.품번&&h.점검일.startsWith(yr))).length;
+  $('#ctbl').innerHTML=body+`<tr class="sec"><td>합계</td>
+    <td style="font-family:var(--mono)">${tg.length}품번</td>
+    <td style="font-family:var(--mono)">${tg.filter(x=>x.s.k==='over'||x.s.k==='never').length}</td>
+    <td style="font-family:var(--mono)">${tg.filter(x=>x.s.k==='soon').length}</td>
+    <td style="font-family:var(--mono)">${tg.filter(x=>x.s.k==='ok').length}</td>
+    <td style="font-family:var(--mono)">${rows.length-tg.length}</td>
+    <td style="font-family:var(--mono)">${tg.length?Math.round(doneAll/tg.length*100):0}%</td></tr>`;
+}
+function renderHist(){
+  const q=$('#hq').value.trim().toLowerCase(), c=$('#hc').value;
+  const rows=HIST.filter(h=>(!c||(h.고객사||custOf(h.품번))===c)&&(!q||h.품번.toLowerCase().includes(q)||(h.점검자||'').toLowerCase().includes(q)))
+    .sort((a,b)=>b.점검일.localeCompare(a.점검일));
+  $('#htbl tbody').innerHTML = rows.length? rows.map(h=>`<tr>
+    <td style="font-family:var(--mono)">${h.점검일}</td>
+    <td style="font-size:11px;color:var(--muted)">${h.고객사||custOf(h.품번)}</td><td><b>${h.품번}</b></td>
+    <td style="font-family:var(--mono);font-size:12px">${h.금형번호||''}</td>
+    <td><span class="badge b-${(h.등급||'B')[0]}">${h.등급||''}</span></td>
+    <td style="font-family:var(--mono)">${h.타발수?Number(h.타발수).toLocaleString():'—'}</td>
+    <td><span class="pill ${h.판정==='합격'?'p-ok':'p-bad'}">${h.판정}</span></td>
+    <td style="font-size:12px">${h.불량||'—'}</td><td>${h.점검자||''}</td></tr>`).join('')
+    : `<tr><td colspan="9" class="empty"><b>점검 이력이 없습니다</b>점검 대상에서 금형을 선택해 점검을 기록하세요.</td></tr>`;
+}
+function planYear(){return +($('#py').value||new Date().getFullYear())}
+function defaultPlan(){
+  const p={}, per={'A등급':1,'B등급':2,'C등급':4};
+  ['A등급','B등급','C등급'].forEach(g=>{
+    const list=MOLDS.filter(m=>m.등급===g), n=per[g], gap=12/n;
+    list.forEach((m,i)=>{
+      const start=(i%gap)+1;
+      p[m.품번]=Array.from({length:n},(_,k)=>Math.round(start+k*gap));
+    });
+  });
+  return p;
+}
+function doneIn(pn,y,mo){
+  return HIST.some(h=>h.품번===pn && h.점검일.startsWith(`${y}-${String(mo).padStart(2,'0')}`));
+}
+function renderPlan(){
+  const y=planYear(), g=$('#pg').value, q=$('#pq').value.trim().toLowerCase(), c=$('#pc').value;
+  const now=new Date(), curY=now.getFullYear(), curM=now.getMonth()+1;
+  const list=MOLDS.filter(m=>m.등급===g&&(!c||m.고객사===c)&&(!q||m.품번.toLowerCase().includes(q)||(m.금형번호||'').toLowerCase().includes(q)));
+
+  // 월별 요약(등급 전체 기준)
+  const all=MOLDS.filter(m=>CYCLE[m.등급]>0&&(!c||m.고객사===c));
+  const sum=Array.from({length:12},(_,i)=>{
+    const mo=i+1; let plan=0,done=0;
+    all.forEach(m=>{ if((PLAN[m.품번]||[]).includes(mo)){plan++; if(doneIn(m.품번,y,mo))done++;} });
+    return {mo,plan,done};
+  });
+  $('#msum').innerHTML=sum.map(s=>`<div class="ms${y===curY&&s.mo===curM?' now':''}">
+    <b>${s.done}/${s.plan}</b><span>${s.mo}월</span></div>`).join('');
+
+  $('#mx tbody').innerHTML = list.length? list.map(m=>{
+    const mine=PLAN[m.품번]||[];
+    const cells=Array.from({length:12},(_,i)=>{
+      const mo=i+1, has=mine.includes(mo);
+      let cls='',txt='';
+      if(has){
+        if(doneIn(m.품번,y,mo)){cls='done';txt='✓'}
+        else if(y<curY||(y===curY&&mo<curM)){cls='miss';txt='✕'}
+        else {cls='plan';txt='●'}
+      }
+      return `<td><button class="cell ${cls}" data-pn="${m.품번}" data-mo="${mo}"
+        aria-label="${m.품번} ${mo}월 ${has?'계획 있음':'계획 없음'}">${txt}</button></td>`;
+    }).join('');
+    return `<tr><td class="lft mno stk k0">${m.고객사}</td><td class="lft pn stk k1">${m.품번}</td>
+      <td class="lft mno stk k2">${m.금형번호||''}</td>
+      <td class="stk k3">${CYCTXT[m.등급]}</td>${cells}</tr>`;
+  }).join('') : `<tr><td colspan="16" class="empty"><b>해당 등급의 금형이 없습니다</b>등급 또는 검색어를 바꿔 보세요.</td></tr>`;
+
+  $$('#mx .cell').forEach(b=>b.onclick=()=>{
+    const pn=b.dataset.pn, mo=+b.dataset.mo;
+    const a=PLAN[pn]||(PLAN[pn]=[]);
+    const i=a.indexOf(mo);
+    if(i>=0)a.splice(i,1); else a.push(mo);
+    a.sort((x,z)=>x-z); renderPlan(); if(sb)push();
+  });
+
+  const cnt={};MOLDS.filter(m=>!c||m.고객사===c).forEach(m=>cnt[m.등급]=(cnt[m.등급]||0)+1);
+  const per={'A등급':1,'B등급':2,'C등급':4,'F등급':0};
+  $('#ptbl').innerHTML=['A등급','B등급','C등급','F등급'].map(gg=>{
+    const c=cnt[gg]||0, n=per[gg];
+    return `<tr><td><span class="badge b-${gg[0]}">${gg}</span></td><td>${SCORE[gg]}</td>
+      <td><b>${CYCTXT[gg]}</b></td><td style="font-family:var(--mono)">${c}품번</td>
+      <td style="font-family:var(--mono)">${n?c*n+'회':'대상 외'}</td>
+      <td style="font-family:var(--mono)">${n?(c*n/12).toFixed(1)+'품번':'—'}</td></tr>`}).join('');
+}
+/* ================= 타발수 관리 ================= */
+const SHOT_YEARS=['2026','2025'];
+let SHOT={}, SMETA={}, SROWS=[];
+SHOT_SEED.forEach(r=>{
+  SMETA[r.품번]={고객사:r.고객사||'',모델:r.모델||'',기계:r.기계||''};
+  SHOT_YEARS.forEach(y=>{(SHOT[y]=SHOT[y]||{})[r.품번]=(r['y'+y]||Array(12).fill(null)).slice()});
+});
+const gradeOf=pn=>(MOLDS.find(m=>m.품번===pn)||{}).등급||'';
+const custOf=pn=>(MOLDS.find(m=>m.품번===pn)||{}).고객사||(SMETA[pn]?SMETA[pn].고객사:'')||'';
+const CUSTS=[...new Set(MOLDS.map(m=>m.고객사))];
+const shotYear=()=>$('#sy').value||SHOT_YEARS[0];
+const nf=v=>v==null?'':Number(v).toLocaleString();
+function lastCum(a){if(!a)return null;for(let i=11;i>=0;i--)if(a[i]!=null)return a[i];return null}
+function baseIdx(a){if(!a)return -1;for(let i=0;i<12;i++)if(a[i]!=null)return i;return -1}
+function annualOf(a){
+  if(!a||a.every(v=>v==null))return null;
+  return lastCum(a)-a[baseIdx(a)];
+}
+const scoreOf=v=>v==null?null:(v>=4000000?5:v>=3000000?4:v>=2000000?3:v>=1000000?2:1);
+function latestShot(pn){for(const y of SHOT_YEARS){const v=lastCum((SHOT[y]||{})[pn]);if(v!=null)return v}return null}
+const scCls=s=>s>=4?'sc4':s===3?'sc3':'sc12';
+function anCell(a){
+  const an=annualOf(a);
+  if(an==null)return '—';
+  const b=baseIdx(a);
+  return `<b>${an.toLocaleString()}</b>`+(b>0?`<span title="${b+1}월 값을 기준으로 계산" style="color:var(--warn)">*</span>`:'');
+}
+
+function fillCustSelects(){
+  const opt=c=>`<option>${c}</option>`;
+  ['#fc','#hc','#pc'].forEach(id=>{
+    const lbl=id==='#fc'?'고객사 전체':'고객사 전체';
+    $(id).innerHTML=`<option value="">${lbl}</option>`+CUSTS.map(opt).join('');
+  });
+}
+function fillShotSelects(){
+  $('#sy').innerHTML=SHOT_YEARS.map((y,i)=>`<option ${i?'':'selected'}>${y}</option>`).join('');
+  $('#pm-y').innerHTML=$('#sy').innerHTML;
+  $('#pm-mo').innerHTML=Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}월</option>`).join('');
+  const cs=[...new Set(Object.values(SMETA).map(m=>m.고객사).filter(Boolean))]
+    .sort((a,b)=>{const ia=CUSTS.indexOf(a),ib=CUSTS.indexOf(b);
+      return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b,'ko')});
+  $('#sc').innerHTML='<option value="">고객사 전체</option>'+cs.map(c=>`<option>${c}</option>`).join('');
+}
+function shotList(){
+  const cust=$('#sc').value, q=$('#sq').value.trim().toLowerCase();
+  return Object.keys(SMETA).filter(pn=>{
+    const me=SMETA[pn];
+    if(cust&&me.고객사!==cust)return false;
+    if(q&&!(pn.toLowerCase().includes(q)||(me.모델||'').toLowerCase().includes(q)))return false;
+    return true;
+  });
+}
+function shotSummary(){
+  const y=shotYear(), d=SHOT[y]||{};
+  let tot=0,hi=0,none=0,cum=0;
+  SROWS.forEach(pn=>{
+    const a=d[pn], an=annualOf(a);
+    if(an==null){none++;return}
+    tot+=an; if(scoreOf(an)>=4)hi++;
+    const lc=lastCum(a); if(lc!=null)cum+=lc;
+  });
+  $('#ssum').innerHTML=[
+    ['등록 금형',SROWS.length+'건'],
+    [y+'년 타발수',Math.round(tot/10000).toLocaleString()+'만타'],
+    ['4~5점 (연 300만타 이상)',hi+'건'],
+    ['당해 미입력',none+'건']
+  ].map(([t,v])=>`<div class="ms"><b style="font-size:16px">${v}</b><span>${t}</span></div>`).join('');
+}
+function renderShot(){
+  if(!$('#sy').options.length)return;
+  const y=shotYear(), d=SHOT[y]||{}, mode=$('#smode').value;
+  SROWS=shotList();
+  $('#shtbl tbody').innerHTML = SROWS.length? SROWS.map((pn,i)=>{
+    const me=SMETA[pn], a=d[pn]||Array(12).fill(null);
+    const cells=Array.from({length:12},(_,k)=>{
+      if(mode==='inc'){
+        let prev=null; for(let j=k-1;j>=0;j--){if(a[j]!=null){prev=a[j];break}}
+        const inc=(a[k]==null||prev==null)?null:a[k]-prev;
+        return `<td class="num mo">${inc==null?'<span style="color:var(--none)">—</span>':inc.toLocaleString()}</td>`;
+      }
+      return `<td class="num mo"><input class="cel" data-i="${i}" data-mo="${k}" inputmode="numeric" value="${nf(a[k])}"></td>`;
+    }).join('');
+    const an=annualOf(a), sc=scoreOf(an), g=gradeOf(pn);
+    return `<tr>
+      <td class="stk c0" style="font-size:11px;color:var(--muted)">${me.고객사}</td>
+      <td class="stk c1"><b>${pn}</b></td>
+      <td class="stk c2" title="${me.모델}" style="font-size:11px;color:var(--muted)">${me.모델}</td>
+      <td class="stk c3" style="text-align:center;font-size:11px">${me.기계}</td>
+      <td class="stk c4" style="text-align:center">${g?`<span class="badge b-${g[0]}" style="margin:0">${g}</span>`:'<span style="color:var(--none);font-size:11px">미등록</span>'}</td>
+      ${cells}
+      <td class="num an stk r1" data-an="${i}">${anCell(a)}</td>
+      <td class="stk r0" style="text-align:center" data-sc="${i}">${sc==null?'—':`<span class="sc ${scCls(sc)}">${sc}점</span>`}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="19" class="empty"><b>해당하는 금형이 없습니다</b>고객사 또는 검색어를 바꿔 보세요.</td></tr>`;
+  shotSummary();
+}
+function refreshRow(i){
+  const pn=SROWS[i], a=(SHOT[shotYear()]||{})[pn];
+  const sc=scoreOf(annualOf(a));
+  const ta=$(`[data-an="${i}"]`), ts=$(`[data-sc="${i}"]`);
+  if(ta)ta.innerHTML=anCell(a);
+  if(ts)ts.innerHTML=sc==null?'—':`<span class="sc ${scCls(sc)}">${sc}점</span>`;
+  shotSummary();
+}
+const norm=s=>String(s).toUpperCase().replace(/\s/g,'');
+function findPn(pn){
+  if(SMETA[pn])return pn;
+  const n=norm(pn);
+  return Object.keys(SMETA).find(k=>norm(k)===n)||null;
+}
+function applyPaste(){
+  const y=$('#pm-y').value, mo=+$('#pm-mo').value-1;
+  let ok=0,skip=0; const miss=[];
+  SHOT[y]=SHOT[y]||{};
+  $('#pm-txt').value.split(/\r?\n/).forEach(L=>{
+    if(!L.trim())return;
+    let t = L.includes('\t') ? L.split('\t') : L.split(/\s{2,}|,/);
+    t = t.map(s=>s.trim()).filter(Boolean);
+    if(t.length<2) t = L.trim().split(/\s+/);
+    if(t.length<2){skip++;return}
+    let num=null;
+    for(let i=t.length-1;i>=1;i--){
+      const s=t[i].replace(/[,\s]/g,'');
+      if(/^\d+$/.test(s)){num=parseInt(s,10);break}
+    }
+    if(num==null){skip++;return}
+    const key=findPn(t[0]);
+    if(!key){miss.push(t[0]);return}
+    (SHOT[y][key]=SHOT[y][key]||Array(12).fill(null))[mo]=num; ok++;
+  });
+  $('#sy').value=y; renderShot();
+  $('#pm-res').innerHTML=`<b>${mo+1}월</b>에 반영 <b>${ok}건</b> · 미매칭 <b>${miss.length}건</b>${skip?' · 형식오류 '+skip+'행':''}`+
+    (miss.length?`<div class="note" style="margin-top:6px;color:var(--bad)">미매칭 품번: ${miss.slice(0,25).join(', ')}${miss.length>25?' 외 '+(miss.length-25)+'건':''}</div>`:'');
+  if(ok){toast(`${ok}건을 ${mo+1}월에 반영했습니다`); if(sb)push();}
+}
+
+/* ================= 금형 등급 평가 ================= */
+const GITEMS=[
+ {구분:'생산',면:'생산면',no:'1',항목:'타발수',opt:['400만타 이상','300 ~ 400만타','200 ~ 300만타','100 ~ 200만타','100만타 미만'],shot:true},
+ {구분:'생산',면:'생산면',no:'2',항목:'예비/대체 금형 유무 및 교체 난이도',opt:['없음','96시간 이하','72시간 이하','48시간 이하','24시간 이하']},
+ {구분:'생산',면:'생산면',no:'3',항목:'년 고장 발생빈도 또는 예상빈도',opt:['10회 이상','6 ~ 9회','4 ~ 5회','2 ~ 3회','1회']},
+ {구분:'생산',면:'생산면',no:'4',항목:'금형수리의 정지시간 또는 예상소요시간',opt:['10HR 이상','5~10HR/회','3~5HR/회','1~3HR/회','1HR/회 미만']},
+ {구분:'생산',면:'납기',no:'5',항목:'금형파손이 타공정에 미치는 영향',opt:['라인 정지','납품대기','금형수리','가동정지','없음'],force:5,note:"배점 5점 시 'C등급' 적용"},
+ {구분:'생산',면:'납기',no:'6',항목:'고장이 거래처에 미치는 영향',opt:['라인 정지','생산조정','비상재고 사용','후공정 지연','영향 없음']},
+ {구분:'생산',면:'소재',no:'7',항목:'소재두께별 미치는 영향',opt:['±0.05','±0.04','±0.03','±0.02','±0.01']},
+ {구분:'생산',면:'금형',no:'8',항목:'금형제작년도에 미치는 예상수리 난이도',opt:['A/S금형','10년~15년','6년~9년','2년~5년','2년미만']},
+ {구분:'품질',면:'',no:'7',항목:'금형 상태에 따른 공정 부적합품 발생 가능성',opt:['30% 이상','30% 미만','10% 미만','1% 미만','극히 적음'],force:4,note:"배점 4,5점 시 'C등급' 적용"},
+ {구분:'품질',면:'',no:'8',항목:'금형 상태에 따른 부적합품 고객 유출 가능성',opt:['납품 불가','불량유출 가능','검사시 검출가능','생산시 검출가능','없음'],force:4,note:"배점 4,5점 시 'C등급' 적용"},
+ {구분:'원가',면:'',no:'9',항목:'고장으로인한 품질저하 손실액, 예상손실액',opt:['1000만원 이상','500~1000만','100~500만','10~100만','10만원 미만']},
+ {구분:'원가',면:'',no:'10',항목:'고장으로인한 에너지,재료비,노무비 손실액',opt:['1000만원 이상','500~1000만','100~500만','10~100만','10만원 미만']},
+ {구분:'원가',면:'',no:'11',항목:'금형수리 비용의 규모',opt:['1000만원 이상','500~1000만','100~500만','10~100만','10만원 미만']}
+];
+let GRD={}, gcur=null, gsc=[], gfilter='all';
+Object.keys(GRADE_SEED).forEach(pn=>{
+  const s=GRADE_SEED[pn];
+  GRD[pn]={점수:s.점수.slice(),총점:s.총점,평가일:'2025-12-31',평가자:'',반영:true};
+});
+function calcGrade(sc){
+  if(!sc||sc.some(v=>v==null))return null;
+  const tot=sc.reduce((a,b)=>a+b,0);
+  const forced=[];
+  GITEMS.forEach((it,i)=>{ if(it.force&&sc[i]>=it.force) forced.push(`${it.구분}${it.no}번 ${sc[i]}점`); });
+  const g = forced.length?'C등급' : tot<=20?'A등급' : tot<=38?'B등급' : 'C등급';
+  return {tot,등급:g,forced};
+}
+function gradeState(pn){
+  const r=GRD[pn]; if(!r)return null;
+  const c=calcGrade(r.점수); if(!c)return null;
+  return Object.assign({},c,{평가일:r.평가일||'',평가자:r.평가자||'',반영:!!r.반영});
+}
+function fillGradeSelect(){
+  $('#gc').innerHTML='<option value="">고객사 전체</option>'+CUSTS.map(c=>`<option>${c}</option>`).join('');
+}
+function gradeList(){
+  const c=$('#gc').value, q=$('#gq').value.trim().toLowerCase();
+  return MOLDS.filter(m=>{
+    if(c&&m.고객사!==c)return false;
+    if(q&&!(m.품번.toLowerCase().includes(q)||(m.금형번호||'').toLowerCase().includes(q)))return false;
+    const st=gradeState(m.품번);
+    if(gfilter==='done')return !!st;
+    if(gfilter==='none')return !st;
+    if(gfilter==='diff')return !!st&&st.등급!==m.등급;
+    return true;
+  });
+}
+function renderGrade(){
+  if(!$('#gc').options.length)return;
+  const list=gradeList();
+  let done=0,none=0,diff=0,fc=0;
+  MOLDS.forEach(m=>{const st=gradeState(m.품번);
+    if(!st){none++;return} done++; if(st.등급!==m.등급)diff++; if(st.forced.length)fc++;});
+  $('#gsum').innerHTML=[['평가 완료',done+'건'],['미평가',none+'건'],['등급 불일치',diff+'건'],['강제 C등급',fc+'건']]
+    .map(([t,v])=>`<div class="ms"><b style="font-size:16px">${v}</b><span>${t}</span></div>`).join('');
+  $('#gtbl tbody').innerHTML = list.length? list.map(m=>{
+    const st=gradeState(m.품번);
+    const ng=st?st.등급:null;
+    return `<tr data-gpn="${encodeURIComponent(m.품번)}" style="cursor:pointer">
+      <td style="font-size:11px;color:var(--muted)">${m.고객사}</td>
+      <td><b>${m.품번}</b></td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${m.금형번호||''}</td>
+      <td style="text-align:center"><span class="badge b-${m.등급[0]}" style="margin:0">${m.등급}</span></td>
+      <td class="num"><b>${st?st.tot:'—'}</b></td>
+      <td style="text-align:center">${ng?`<span class="badge b-${ng[0]}" style="margin:0">${ng}</span>`:'—'}
+        ${st&&ng!==m.등급?'<span class="gw" style="margin-left:5px">불일치</span>':''}</td>
+      <td style="font-size:11px;color:var(--bad)">${st&&st.forced.length?st.forced.join(', '):''}</td>
+      <td style="text-align:center;font-family:var(--mono);font-size:11px">${st?st.평가일:''}</td>
+      <td style="text-align:center;font-size:11px">${st?st.평가자:''}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="9" class="empty"><b>해당하는 금형이 없습니다</b>필터 또는 검색어를 바꿔 보세요.</td></tr>`;
+  $$('#gtbl tbody tr[data-gpn]').forEach(tr=>tr.onclick=()=>openG(decodeURIComponent(tr.dataset.gpn)));
+}
+function gRecalc(){
+  const c=calcGrade(gsc);
+  if(!c){
+    const n=gsc.filter(v=>v!=null).length;
+    $('#g-total').textContent='—'; $('#g-total').nextElementSibling.textContent=`미평가 ${13-n}건`;
+    $('#g-grade').textContent='—'; $('#g-cyc').textContent='—'; $('#g-force').textContent='';
+    return;
+  }
+  $('#g-total').textContent=c.tot; $('#g-total').nextElementSibling.textContent='총점 (13~65)';
+  $('#g-grade').textContent=c.등급; $('#g-cyc').textContent=CYCTXT[c.등급];
+  $('#g-force').innerHTML=c.forced.length?`강제 C등급 적용 · ${c.forced.join(' / ')}`:'';
+}
+function openG(pn){
+  gcur=MOLDS.find(m=>m.품번===pn); if(!gcur)return;
+  const r=GRD[pn];
+  gsc = r? r.점수.slice() : Array(13).fill(null);
+  $('#g-title').textContent=`${gcur.고객사} · ${gcur.품번} 등급 평가`;
+  $('#g-now').className='badge b-'+gcur.등급[0]; $('#g-now').textContent='현재 '+gcur.등급;
+  $('#g-date').value=(r&&r.평가일)||today(); $('#g-by').value=(r&&r.평가자)||'';
+  const an=annualOf((SHOT[SHOT_YEARS[0]]||{})[pn]);
+  const sug=scoreOf(an);
+  $('#g-shot').innerHTML = an==null
+    ? '타발수 대장에 해당 품번의 실적이 없습니다.'
+    : `타발수 대장 ${SHOT_YEARS[0]}년 연간 <b>${an.toLocaleString()}타</b> → 1번 항목 <b>${sug}점</b>
+       <button class="btn ghost" id="g-getshot" style="padding:3px 9px;margin-left:8px">가져오기</button>`;
+  let sec='';
+  $('#gitbl tbody').innerHTML=GITEMS.map((it,i)=>{
+    const head = it.구분!==sec ? (sec=it.구분, `<tr><td colspan="3" class="sec">${it.구분}</td></tr>`) : '';
+    const btns=[5,4,3,2,1].map((v,k)=>
+      `<button data-v="${v}" class="${it.force&&v>=it.force?'hi':''}" aria-pressed="false"><b>${v}점</b>${it.opt[k]}</button>`).join('');
+    return head+`<tr>
+      <td style="width:132px;vertical-align:top">
+        <b>${it.구분==='생산'&&it.면?it.면+' ':''}${it.no}. </b>${it.항목}
+        ${it.note?`<div class="mn" style="color:var(--bad)">${it.note}</div>`:''}</td>
+      <td><div class="gopt" data-i="${i}">${btns}</div></td></tr>`;
+  }).join('');
+  $$('#gitbl .gopt').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    const i=+g.dataset.i;
+    g.querySelectorAll('button').forEach(o=>o.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); gsc[i]=+b.dataset.v; gRecalc();
+  }));
+  gsc.forEach((v,i)=>{ if(v==null)return;
+    const b=$(`#gitbl .gopt[data-i="${i}"] button[data-v="${v}"]`); if(b)b.setAttribute('aria-pressed','true'); });
+  if($('#g-getshot'))$('#g-getshot').onclick=()=>{
+    const b=$('#gitbl .gopt[data-i="0"] button[data-v="'+sug+'"]'); if(b)b.click();
+    toast(`1번 항목에 ${sug}점을 반영했습니다`);
+  };
+  gRecalc();
+  $('#gmask').classList.add('on');
+}
+const closeG=()=>$('#gmask').classList.remove('on');
+function applyGrd(){
+  Object.keys(GRD).forEach(pn=>{
+    const r=GRD[pn]; if(!r||!r.반영)return;
+    const c=calcGrade(r.점수); if(!c)return;
+    const m=MOLDS.find(x=>x.품번===pn); if(m&&m.등급!=='F등급')m.등급=c.등급;
+  });
+}
+async function saveG(apply){
+  const c=calcGrade(gsc);
+  if(!c){toast(`평가 항목 ${gsc.filter(v=>v==null).length}건이 남았습니다`);return}
+  if(!$('#g-by').value.trim()){toast('평가자를 입력하세요');$('#g-by').focus();return}
+  if(apply&&gcur.등급==='F등급'&&!confirm('F등급(AS·단종) 금형입니다. 평가 등급으로 변경할까요?'))return;
+  GRD[gcur.품번]={점수:gsc.slice(),총점:c.tot,평가일:$('#g-date').value||today(),
+    평가자:$('#g-by').value.trim(),반영:!!apply};
+  if(apply){
+    const before=gcur.등급; gcur.등급=c.등급;
+    toast(before===c.등급?`평가를 저장했습니다 (${c.등급} 유지)`:`등급을 ${before} → ${c.등급} 으로 변경했습니다`);
+  } else toast('평가 결과를 저장했습니다');
+  closeG(); render();
+  if(sb) await push();
+}
+
+/* ================= 정기점검 일괄 등록 ================= */
+let INSP={'SKF씰':'강영태','SKF SBC':'유성환','일진글로벌':'왕석주'};
+function fillInsp(){
+  $('#b-insp').innerHTML=CUSTS.map(c=>
+    `<div class="fld"><label>${c}</label><input type="text" class="binsp" data-c="${c}" value="${INSP[c]||''}" placeholder="점검자"></div>`).join('');
+  $$('#b-insp .binsp').forEach(el=>el.oninput=()=>{INSP[el.dataset.c]=el.value.trim(); pushSoon();});
+}
+function fillBulk(){
+  fillInsp();
+  const y=new Date().getFullYear();
+  $('#b-y').innerHTML=[y-1,y].map(v=>`<option ${v===y?'selected':''}>${v}</option>`).join('');
+  const mo=n=>Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===n?'selected':''}>${i+1}월</option>`).join('');
+  $('#b-m1').innerHTML=mo(1); $('#b-m2').innerHTML=mo(new Date().getMonth()+1);
+  $('#b-c').innerHTML='<option value="">전체</option>'+CUSTS.map(c=>`<option>${c}</option>`).join('');
+}
+function bDate(y,m){
+  const dm=$('#b-d').value;
+  const day = dm==='end'? new Date(y,m,0).getDate() : 15;
+  const d=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  const td=today();
+  // 진행 중인 달은 말일이 아직 안 왔으므로 오늘 날짜로 등록
+  if(d>td && d.slice(0,7)===td.slice(0,7)) return td;
+  return d;
+}
+function bTargets(){
+  const y=+$('#b-y').value, m1=+$('#b-m1').value, m2=+$('#b-m2').value, c=$('#b-c').value;
+  const td=today(), out=[];
+  MOLDS.forEach(m=>{
+    if(!CYCLE[m.등급])return;
+    if(c&&m.고객사!==c)return;
+    (PLAN[m.품번]||[]).forEach(mo=>{
+      if(mo<m1||mo>m2)return;
+      const d=bDate(y,mo);
+      if(d>td)return;
+      if(HIST.some(h=>h.품번===m.품번&&h.점검일.startsWith(`${y}-${String(mo).padStart(2,'0')}`)))return;
+      out.push({m,mo,d});
+    });
+  });
+  return out;
+}
+function bPrev(){
+  const y=+$('#b-y').value, m1=+$('#b-m1').value, m2=+$('#b-m2').value, c=$('#b-c').value;
+  const n=bTargets().length;
+  const ex=HIST.filter(h=>{
+    const p=h.점검일.split('-');
+    return +p[0]===y && +p[1]>=m1 && +p[1]<=m2 && (!c||(h.고객사||custOf(h.품번))===c);
+  }).length;
+  const tg=MOLDS.filter(m=>CYCLE[m.등급]&&(!c||m.고객사===c)).length;
+  $('#b-prev').innerHTML=`점검 대상 <b>${tg}품번</b> · 신규 등록 <b style="color:var(--ok)">${n}건</b> · 기존 이력 <b>${ex}건</b>`;
+}
+async function bRun(){
+  const y=+$('#b-y').value, t=bTargets();
+  if(!t.length){toast('등록할 대상이 없습니다');return}
+  const need=[...new Set(t.map(x=>x.m.고객사))].filter(c=>!(INSP[c]||'').trim());
+  if(need.length){toast(`점검자를 입력하세요: ${need.join(', ')}`);
+    const el=$(`#b-insp .binsp[data-c="${need[0]}"]`); if(el)el.focus(); return}
+  if(!confirm(`${y}년 ${$('#b-m1').value}~${$('#b-m2').value}월 계획분 ${t.length}건을 합격으로 등록합니다.`))return;
+  t.forEach(({m,mo,d},k)=>{
+    const a=(SHOT[String(y)]||{})[m.품번];
+    const sv=a?(a[mo-1]!=null?a[mo-1]:lastCum(a)):latestShot(m.품번);
+    HIST.push({id:Date.now()+k,품번:m.품번,고객사:m.고객사,금형번호:m.금형번호,등급:m.등급,
+      점검일:d,점검자:INSP[m.고객사]||'',타발수:sv==null?'':sv,연마:'',판정:'합격',불량:'',
+      항목:ITEMS.map(it=>({부위:it.구분+' '+it.부위,결과:'양호'})),특이:'',조치:''});
+  });
+  render(); bPrev(); toast(`${t.length}건을 등록했습니다`);
+  if(sb) await push();
+}
+async function bDel(){
+  const y=+$('#b-y').value, m1=+$('#b-m1').value, m2=+$('#b-m2').value, c=$('#b-c').value;
+  const keep=HIST.filter(h=>{
+    const p=h.점검일.split('-');
+    const hit=(+p[0]===y && +p[1]>=m1 && +p[1]<=m2 && (!c||(h.고객사||custOf(h.품번))===c));
+    return !hit;
+  });
+  const n=HIST.length-keep.length;
+  if(!n){toast('삭제할 이력이 없습니다');return}
+  if(!confirm(`${y}년 ${m1}~${m2}월 점검 이력 ${n}건을 삭제합니다. 되돌릴 수 없습니다.`))return;
+  HIST=keep; render(); bPrev(); toast(`${n}건을 삭제했습니다`);
+  if(sb) await push();
+}
+
+function openM(pn){
+  cur=MOLDS.find(m=>m.품번===pn); if(!cur)return;
+  judge={};
+  $('#m-title').textContent=`${cur.고객사} · ${cur.품번} 정기점검`;
+  $('#m-grade').className='badge b-'+cur.등급[0]; $('#m-grade').textContent=`${cur.등급} · ${CYCTXT[cur.등급]}`;
+  $('#f-date').value=today(); $('#f-by').value=INSP[cur.고객사]||''; $('#f-grind').value='';
+  const auto=latestShot(pn); $('#f-shot').value=auto==null?'':auto;
+  $('#f-note').value=''; $('#f-act').value='';
+  const l=lastOf(pn);
+  $('#m-prev').textContent=l?`최근 점검 ${l.점검일} · ${l.판정} · ${l.점검자||''}`:'최초 점검입니다.';
+  let sec='';
+  $('#itbl tbody').innerHTML=ITEMS.map((it,i)=>{
+    const head = it.구분!==sec ? (sec=it.구분, `<tr><td colspan="4" class="sec">${it.구분}</td></tr>`) : '';
+    return head+`<tr><td style="width:34px;font-family:var(--mono);color:var(--muted)">${i+1}</td>
+      <td style="width:150px"><b>${it.부위}</b></td>
+      <td>${it.기준}<div class="mn">${it.방법}</div></td>
+      <td style="width:190px"><div class="jud" data-i="${i}">
+        <button class="g" data-v="양호" aria-pressed="false">양호</button>
+        <button class="n" data-v="불량" aria-pressed="false">불량</button>
+        <button class="x" data-v="해당없음" aria-pressed="false">N/A</button>
+      </div></td></tr>`}).join('');
+  $$('#itbl .jud').forEach(j=>j.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    j.querySelectorAll('button').forEach(o=>o.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); judge[j.dataset.i]=b.dataset.v;
+  }));
+  $('#mask').classList.add('on'); $('#f-by').focus();
+}
+const closeM=()=>$('#mask').classList.remove('on');
+
+async function save(){
+  const n=Object.keys(judge).length;
+  if(n<ITEMS.length){toast(`점검 항목 ${ITEMS.length-n}건이 남았습니다`);return}
+  if(!$('#f-by').value.trim()){toast('점검자를 입력하세요');$('#f-by').focus();return}
+  const bad=ITEMS.map((it,i)=>judge[i]==='불량'?`${it.구분} ${it.부위}`:null).filter(Boolean);
+  HIST.push({id:Date.now(),품번:cur.품번,고객사:cur.고객사,금형번호:cur.금형번호,등급:cur.등급,
+    점검일:$('#f-date').value||today(),점검자:$('#f-by').value.trim(),
+    타발수:$('#f-shot').value||'',연마:$('#f-grind').value,
+    판정:bad.length?'불합격':'합격',불량:bad.join(', '),
+    항목:ITEMS.map((it,i)=>({부위:it.구분+' '+it.부위,결과:judge[i]})),
+    특이:$('#f-note').value.trim(),조치:$('#f-act').value.trim()});
+  closeM(); render(); toast('점검 결과를 저장했습니다');
+  if(sb) await push();
+}
+async function push(){
+  if(!sb)return;
+  try{
+    const {error}=await sb.from('kv_store').upsert({key:'mold_periodic_v1',value:JSON.stringify({hist:HIST,plan:PLAN,shot:SHOT,grd:GRD,insp:INSP})});
+    if(error)throw error; $('#conn-st').textContent=`서버 저장 완료 · ${new Date().toLocaleTimeString('ko-KR')}`;
+  }catch(e){toast('서버 저장 실패: '+e.message)}
+}
+async function connect(){
+  const u=$('#sb-url').value.trim(), k=$('#sb-key').value.trim();
+  if(!u||!k){toast('URL과 anon key를 입력하세요');return}
+  try{
+    sb=supabase.createClient(u,k);
+    const {data,error}=await sb.from('kv_store').select('value').eq('key','mold_periodic_v1').maybeSingle();
+    if(error)throw error;
+    if(data&&data.value){const v=JSON.parse(data.value);
+      if(Array.isArray(v)){HIST=v}else{HIST=v.hist||[];PLAN=v.plan&&Object.keys(v.plan).length?v.plan:defaultPlan();
+        if(v.shot)SHOT_YEARS.forEach(y=>{if(v.shot[y])SHOT[y]=Object.assign(SHOT[y]||{},v.shot[y])});
+        if(v.grd){GRD=Object.assign(GRD,v.grd);applyGrd()}
+        if(v.insp)INSP=Object.assign(INSP,v.insp)}
+      render()}
+    $('#conn-st').textContent=`연결됨 · 이력 ${HIST.length}건 불러옴`;
+    toast('서버에 연결했습니다');
+  }catch(e){sb=null;$('#conn-st').textContent='연결 실패: '+e.message;toast('연결 실패')}
+}
+function csv(rows,name){
+  const b=new Blob(['\ufeff'+rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n')],
+    {type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();
+}
+
+$$('.tab').forEach(t=>t.onclick=()=>{
+  $$('.tab').forEach(o=>o.setAttribute('aria-selected',String(o===t)));
+  ['target','hist','shot','grade','plan','set'].forEach(k=>$('#p-'+k).hidden=(k!==t.dataset.t));
+});
+$$('.chip[data-f]').forEach(c=>c.onclick=()=>{
+  $$('.chip[data-f]').forEach(o=>o.setAttribute('aria-pressed',String(o===c)));
+  filter=c.dataset.f; render();
+});
+$$('.chip[data-gf]').forEach(c=>c.onclick=()=>{
+  $$('.chip[data-gf]').forEach(o=>o.setAttribute('aria-pressed',String(o===c)));
+  gfilter=c.dataset.gf; renderGrade();
+});
+$('#q').oninput=render; $('#fg').onchange=render; $('#fc').onchange=render;
+$('#hq').oninput=renderHist; $('#hc').onchange=renderHist; $('#pc').onchange=renderPlan;
+$('#gc').onchange=renderGrade; $('#gq').oninput=renderGrade;
+$('#g-close').onclick=closeG; $('#g-cancel').onclick=closeG;
+$('#g-save').onclick=()=>saveG(false); $('#g-apply').onclick=()=>saveG(true);
+$('#gmask').onclick=e=>{if(e.target===$('#gmask'))closeG()};
+$('#btn-gcsv').onclick=()=>{
+  const rows=[['고객사','품번','금형번호','현재등급','총점','산정등급','강제C사유','평가일','평가자',
+    ...GITEMS.map((it,i)=>`${i+1}.${it.항목}`)]];
+  gradeList().forEach(m=>{const r=GRD[m.품번], st=gradeState(m.품번);
+    rows.push([m.고객사,m.품번,m.금형번호,m.등급,st?st.tot:'',st?st.등급:'',
+      st&&st.forced.length?st.forced.join(' / '):'',st?st.평가일:'',st?st.평가자:'',
+      ...(r?r.점수:Array(13).fill(''))])});
+  csv(rows,'금형_등급평가_'+today()+'.csv');
+};
+$('#sy').onchange=renderShot; $('#sc').onchange=renderShot; $('#smode').onchange=renderShot;
+$('#sq').oninput=renderShot;
+let pushT=null;
+const pushSoon=()=>{if(!sb)return;clearTimeout(pushT);pushT=setTimeout(push,1200)};
+function commitCell(el){
+  const i=+el.dataset.i, y=shotYear(), pn=SROWS[i], mo=+el.dataset.mo;
+  if(!pn)return;
+  const raw=el.value.replace(/[^0-9]/g,'');
+  const v=raw===''?null:parseInt(raw,10);
+  SHOT[y]=SHOT[y]||{}; (SHOT[y][pn]=SHOT[y][pn]||Array(12).fill(null))[mo]=v;
+  el.value=nf(v); refreshRow(i); pushSoon();
+}
+$('#shtbl').addEventListener('change',e=>{
+  const el=e.target; if(!el.classList||!el.classList.contains('cel'))return;
+  commitCell(el);
+});
+$('#shtbl').addEventListener('keydown',e=>{
+  const el=e.target; if(!el.classList||!el.classList.contains('cel'))return;
+  let dir=0;
+  if(e.key==='Enter')dir=e.shiftKey?-1:1;
+  else if(e.key==='ArrowDown')dir=1;
+  else if(e.key==='ArrowUp')dir=-1;
+  else return;
+  e.preventDefault();
+  commitCell(el);
+  const nx=$(`#shtbl .cel[data-i="${+el.dataset.i+dir}"][data-mo="${el.dataset.mo}"]`);
+  if(nx){nx.focus(); nx.select(); if(nx.scrollIntoView)nx.scrollIntoView({block:'nearest'});}
+  else toast(dir>0?'마지막 행입니다':'첫 행입니다');
+});
+$('#btn-paste').onclick=()=>{$('#pm-y').value=shotYear();$('#pm-mo').value=String(new Date().getMonth()+1);
+  $('#pm-txt').value='';$('#pm-res').textContent='';$('#pmask').classList.add('on');$('#pm-txt').focus()};
+const closeP=()=>$('#pmask').classList.remove('on');
+$('#pm-close').onclick=closeP; $('#pm-cancel').onclick=closeP; $('#pm-apply').onclick=applyPaste;
+$('#pmask').onclick=e=>{if(e.target===$('#pmask'))closeP()};
+$('#btn-scsv').onclick=()=>{
+  const y=shotYear();
+  const rows=[['연도','고객사','품번','모델','사용기계','등급',...Array.from({length:12},(_,i)=>(i+1)+'월'),'연간 타발수','점수']];
+  shotList().forEach(pn=>{const a=(SHOT[y]||{})[pn]||[],an=annualOf(a),sc=scoreOf(an);
+    rows.push([y,SMETA[pn].고객사,pn,SMETA[pn].모델,SMETA[pn].기계,gradeOf(pn),
+      ...Array.from({length:12},(_,i)=>a[i]==null?'':a[i]),an==null?'':an,sc==null?'':sc])});
+  csv(rows,`금형_타발수관리_${y}.csv`);
+};
+$('#pg').onchange=renderPlan; $('#pq').oninput=renderPlan; $('#py').onchange=renderPlan;
+$('#btn-auto').onclick=()=>{
+  if(!confirm('등급별 주기에 따라 계획을 다시 배정합니다. 기존에 조정한 계획은 사라집니다.'))return;
+  PLAN=defaultPlan(); renderPlan(); toast('계획을 자동 배정했습니다'); if(sb)push();
+};
+$('#btn-pcsv').onclick=()=>{
+  const y=planYear();
+  const rows=[['연도','고객사','품번','금형번호','등급','점검주기',...Array.from({length:12},(_,i)=>(i+1)+'월')]];
+  MOLDS.filter(m=>CYCLE[m.등급]>0).forEach(m=>{
+    const mine=PLAN[m.품번]||[];
+    rows.push([y,m.고객사,m.품번,m.금형번호,m.등급,CYCTXT[m.등급],
+      ...Array.from({length:12},(_,i)=>{const mo=i+1;
+        if(!mine.includes(mo))return '';
+        return doneIn(m.품번,y,mo)?'완료':'계획'})]);
+  });
+  csv(rows,`금형_정기점검_연간계획_${y}.csv`);
+};
+$('#m-close').onclick=closeM; $('#m-cancel').onclick=closeM; $('#m-save').onclick=save;
+const closeB=()=>$('#bmask').classList.remove('on');
+$('#btn-bulk').onclick=()=>{fillInsp();bPrev();$('#bmask').classList.add('on')};
+$('#b-close').onclick=closeB; $('#b-cancel').onclick=closeB;
+$('#b-run').onclick=bRun; $('#b-del').onclick=bDel;
+$('#bmask').onclick=e=>{if(e.target===$('#bmask'))closeB()};
+['#b-y','#b-m1','#b-m2','#b-c','#b-d'].forEach(id=>$(id).onchange=bPrev);
+$('#mask').onclick=e=>{if(e.target===$('#mask'))closeM()};
+document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB()}};
+$('#btn-conn').onclick=connect; $('#btn-save').onclick=push;
+$('#btn-csv').onclick=()=>{
+  const rows=[['고객사','품번','금형번호','등급','점검주기','최근 점검일','다음 점검 예정','상태','잔여일']];
+  MOLDS.forEach(m=>{const s=state(m);
+    rows.push([m.고객사,m.품번,m.금형번호,m.등급,CYCTXT[m.등급],s.last||'',s.next||'',
+      {over:'주기 초과',soon:'임박',ok:'정상',never:'미점검',na:'대상 외'}[s.k],s.dd??''])});
+  csv(rows,'금형_정기점검_대상_'+today()+'.csv');
+};
+$('#btn-hcsv').onclick=()=>{
+  const rows=[['점검일','고객사','품번','금형번호','등급','타발수','판정','불량항목','연마·교환','특이사항','조치내용','점검자']];
+  HIST.slice().sort((a,b)=>b.점검일.localeCompare(a.점검일)).forEach(h=>
+    rows.push([h.점검일,h.고객사||custOf(h.품번),h.품번,h.금형번호,h.등급,h.타발수,h.판정,h.불량,h.연마,h.특이,h.조치,h.점검자]));
+  csv(rows,'금형_정기점검_이력_'+today()+'.csv');
+};
+$('#btn-exp').onclick=()=>{
+  const b=new Blob([JSON.stringify({hist:HIST,plan:PLAN,shot:SHOT,grd:GRD,insp:INSP},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);
+  a.download='금형정기점검_이력_'+today()+'.json';a.click();
+};
+$('#imp').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);
+    if(Array.isArray(d)){HIST=d}else{HIST=d.hist||[];if(d.plan)PLAN=d.plan;
+      if(d.shot)SHOT_YEARS.forEach(y=>{if(d.shot[y])SHOT[y]=Object.assign(SHOT[y]||{},d.shot[y])});
+      if(d.grd){GRD=Object.assign(GRD,d.grd);applyGrd()}
+      if(d.insp)INSP=Object.assign(INSP,d.insp)}
+    render();toast(`이력 ${HIST.length}건을 불러왔습니다`)}catch{toast('파일 형식이 올바르지 않습니다')}};
+  r.readAsText(f);
+};
+(function initYear(){
+  const y=new Date().getFullYear();
+  $('#py').innerHTML=[y-1,y,y+1].map(v=>`<option ${v===y?'selected':''}>${v}</option>`).join('');
+})();
+fillCustSelects();
+fillShotSelects();
+fillGradeSelect();
+fillBulk();
+if(!Object.keys(PLAN).length) PLAN=defaultPlan();
+render();
+</script>
+</body></html>
