@@ -323,6 +323,20 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
         title="위에서 선택한 연도·고객사 기준으로 해당 월(또는 연도 전체)의 타발수를 지웁니다">타발수 삭제</button>
       <button class="btn ghost" id="btn-srst"
         title="대장 원본(2025·2026년)으로 전부 되돌립니다">초기 복원</button>
+      <span class="sep"></span>
+      <select id="agrd-mode" title="등급 산정 방식">
+        <option value="full">평가표 13항목 (규정 기준)</option>
+        <option value="band">타발수 구간 직접 (간이)</option>
+      </select>
+      <select id="agrd-base" title="타발수 기준">
+        <option value="cum">누적 타발수</option>
+        <option value="ann">연간 타발수</option>
+      </select>
+      <button class="btn ghost" id="btn-agrd"
+        title="타발수와 금형 제작년도를 읽어 등급을 다시 계산하고 금형 등급·점검주기에 반영합니다">등급 자동 산정</button>
+      <label class="note" style="display:flex;align-items:center;gap:5px;cursor:pointer"
+        title="타발수를 입력·붙여넣기·삭제할 때마다 등급을 자동으로 다시 계산합니다">
+        <input type="checkbox" id="agrd-on" checked style="width:15px;height:15px;min-width:0">타발수 변경 시 자동</label>
       <div class="spacer"></div>
       <button class="btn" id="btn-paste">MES 타발수 붙여넣기</button>
       <button class="btn ghost" id="btn-scsv">타발수 내보내기</button>
@@ -349,7 +363,18 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
         · 생산관리자는 매월 1일에 전월까지의 <b>누적 SHOT수</b>를 해당 월 칸에 기록합니다. (대장 기재요령 그대로)<br>
         · 1월 칸은 전년 12월 누적값을 그대로 이월한 값이며, <b>연간 타발수 = 최종 입력월 누적 − 1월 누적</b>으로 계산합니다. 1월이 비어 있으면 첫 입력월을 기준으로 잡고 <span style="color:var(--warn)">*</span> 표시를 붙입니다.<br>
         · 대장 수식은 12월 칸을 기준으로 하여 연중에는 값이 음수로 나오지만, 여기서는 <b>마지막 입력월</b>을 기준으로 계산하므로 연중에도 점수가 정상 표시됩니다.<br>
-        · 이 점수는 금형 등급(A/B/C) 평가의 타발수 항목 배점이며, 등급은 별도 평가표 합계로 결정됩니다.<br>
+        · 이 점수는 금형 등급(A/B/C) 평가의 <b>1번 타발수 항목 배점</b>이며, 등급은 13개 항목 합계로 결정됩니다.<br>
+        · <b>등급 자동 산정</b> — 1번 타발수(누적)와 8번 금형제작년도(금형번호 앞자리)를 자동으로 읽어 총점을 다시 계산하고,
+          A(20점 이하)·B(21~38점)·C(39점 이상) 등급을 금형에 반영합니다. 나머지 11개 항목은 기존 평가값을 유지하고,
+          평가 이력이 없는 금형만 기준값을 적용합니다. 등급이 바뀌면 <b>점검주기와 연간 계획일정도 함께 재배정</b>됩니다.
+          <b>F등급(A/S·단종)</b>은 자동 산정에서 제외됩니다.<br>
+        · <b>산정 방식 두 가지</b> —
+          <b>①평가표 13항목(규정 기준)</b>은 TJP-EU0702-01 그대로 총점으로 등급을 매기므로 타발수 항목(1~5점)만으로는
+          등급이 잘 바뀌지 않습니다. 규정에 맞는 방식입니다.
+          <b>②타발수 구간 직접(간이)</b>은 타발수만 보고
+          <b>300만타 이상 → C등급 · 100만~300만타 → B등급 · 100만타 미만 → A등급</b>으로 바로 지정합니다.
+          간이 방식은 평가표 산정 결과와 달라질 수 있어 등급 평가 탭에 <b>등급 불일치</b>로 표시되며,
+          고객 심사 대응 시에는 ①을 기준으로 관리하시기 바랍니다.<br>
         · 셀을 직접 수정하거나 MES 붙여넣기로 한 번에 반영할 수 있습니다.<br>
         · 잘못 입력했을 때는 상단의 <b>타발수 삭제</b>(선택한 연도·고객사·월 기준) 또는
           <b>초기 복원</b>(대장 원본으로 전체 되돌리기)을 쓰세요. 지운 뒤 서버에 자동 저장됩니다.
@@ -1273,7 +1298,7 @@ function applyPaste(){
   $('#pm-res').innerHTML=parts.join(' · ')+
     (miss.length?`<div class="note" style="margin-top:6px;color:var(--bad)">미등록 품번: ${miss.slice(0,25).join(', ')}${miss.length>25?' 외 '+(miss.length-25)+'건':''}</div>`:'')+
     (add?`<div class="note" style="margin-top:6px">신규 품번은 고객사 <b>미등록</b>으로 추가됩니다. 타발수 표에서 확인하세요.</div>`:'');
-  if(ok){toast(`${ok}건 반영${add?` · 신규 ${add}건`:''}`); if(sb)push();}
+  if(ok){toast(`${ok}건 반영${add?` · 신규 ${add}건`:''}`); autoGradeSoon(); if(sb)push();}
 }
 
 /* ================= 금형 등급 평가 ================= */
@@ -1587,6 +1612,73 @@ async function gbRun(){
   if(sb) await push();
 }
 
+/* ============ 타발수 기준 등급 자동 산정 ============ */
+let AGRD=true, agrdT=null;
+function shotValAuto(pn){
+  if(($('#agrd-base')||{}).value==='ann'){
+    for(const y of SHOT_YEARS){const a=annualOf((SHOT[y]||{})[pn]); if(a!=null)return a}
+    return null;
+  }
+  for(const y of SHOT_YEARS){const c=lastCum((SHOT[y]||{})[pn]); if(c!=null)return c}
+  return null;
+}
+function shotScoreAuto(pn){
+  const v=shotValAuto(pn);
+  return v==null?null:(scoreOf(v)||1);          // 타발수 자료 없음 → 산정 제외
+}
+const bandGrade=sc=>sc>=4?'C등급':sc>=2?'B등급':'A등급';   // 300만↑ C · 100만~300만 B · 100만 미만 A
+function autoGradeCalc(m){
+  const s0=shotScoreAuto(m.품번); if(s0==null)return null;
+  const prev=GRD[m.품번];
+  const sc=(prev&&Array.isArray(prev.점수)&&prev.점수.length===GITEMS.length)
+    ? prev.점수.slice() : GB_BASE.slice();
+  sc[0]=s0;                                     // 1. 타발수
+  const ag=ageScoreOf(m); if(ag!=null)sc[7]=ag; // 8. 금형제작년도
+  const c=calcGrade(sc); if(!c)return null;
+  const band=(($('#agrd-mode')||{}).value==='band');
+  return {sc,c,등급:band?bandGrade(s0):c.등급,band,shot:shotValAuto(m.품번),s0};
+}
+function autoGradeTargets(){return MOLDS.filter(m=>m.등급!=='F등급')}
+async function autoGradeRun(silent){
+  const list=autoGradeTargets(), d=today(), by=me||'자동산정';
+  const res=[]; let skip=0;
+  list.forEach(m=>{
+    const r=autoGradeCalc(m);
+    if(!r){skip++;return}
+    res.push({m,r});
+  });
+  if(!res.length){if(!silent)toast('산정할 대상이 없습니다 (타발수 자료 없음)');return 0}
+  const chg=res.filter(({m,r})=>m.등급!==r.등급);
+  if(!silent){
+    const cnt={A등급:0,B등급:0,C등급:0}; res.forEach(({r})=>cnt[r.등급]++);
+    const md=res[0].r.band?'타발수 구간 직접(간이)':'평가표 13항목(규정 기준)';
+    const bs=$('#agrd-base').value==='ann'?'연간 타발수':'누적 타발수';
+    const lines=chg.slice(0,15).map(({m,r})=>
+      `  · ${m.품번}  ${m.등급} → ${r.등급}  (${r.band?nf(r.shot)+'타':r.c.tot+'점'})`).join('\n');
+    if(!confirm(`[${md}] · ${bs} 기준으로 ${res.length}품번의 등급을 다시 산정합니다.`+
+      (skip?` (타발수 자료 없는 ${skip}품번 제외)`:'')+
+      `\n\n산정 결과 : A ${cnt['A등급']} · B ${cnt['B등급']} · C ${cnt['C등급']}품번\n`+
+      `등급 변경 : ${chg.length}품번\n`+(lines?lines+(chg.length>15?`\n  · 외 ${chg.length-15}품번`:'')+'\n':'')+
+      `\n등급이 바뀌면 점검주기와 연간 계획일정도 다시 배정됩니다. 계속할까요?`))return 0;
+  }
+  res.forEach(({m,r})=>{
+    const prev=GRD[m.품번];
+    const same=prev&&prev.총점===r.c.tot&&JSON.stringify(prev.점수)===JSON.stringify(r.sc);
+    GRD[m.품번]={점수:r.sc,총점:r.c.tot,
+      평가일:same&&prev.평가일?prev.평가일:d, 평가자:same&&prev.평가자?prev.평가자:by, 반영:true};
+    if(m.등급!==r.등급){m.등급=r.등급; assignPlan(m)}
+  });
+  render();
+  if(silent){ if(chg.length)toast(`타발수 반영 · 등급 변경 ${chg.length}품번`) }
+  else toast(`${res.length}품번 산정 완료${chg.length?` · 등급 변경 ${chg.length}품번`:' · 등급 변동 없음'}`);
+  if(sb) await push();
+  return chg.length;
+}
+const autoGradeSoon=()=>{
+  if(!AGRD)return;
+  clearTimeout(agrdT); agrdT=setTimeout(()=>autoGradeRun(true),1500);
+};
+
 /* ================= 금형 마스터 ================= */
 let mmEdit=null;
 function assignPlan(m){
@@ -1850,6 +1942,7 @@ function commitCell(el){
   SHOT[y]=SHOT[y]||{}; (SHOT[y][pn]=SHOT[y][pn]||Array(12).fill(null))[mo]=v;
   el.value=nf(v); refreshRow(i); pushSoon();
   if(document.getElementById('w-list'))renderWash();
+  autoGradeSoon();
 }
 $('#shtbl').addEventListener('change',e=>{
   const el=e.target; if(!el.classList||!el.classList.contains('cel'))return;
@@ -1877,7 +1970,7 @@ $('#pm-clear').onclick=async()=>{
   const n=shotCount(y,mo,'');
   if(!n){toast(`${y}년 ${mo+1}월에 입력된 값이 없습니다`);return}
   if(!confirm(`${y}년 ${mo+1}월 타발수 ${n}건을 지웁니다. 되돌릴 수 없습니다.`))return;
-  shotClear(y,mo,''); $('#sy').value=y; renderShot();
+  shotClear(y,mo,''); $('#sy').value=y; renderShot(); autoGradeSoon();
   $('#pm-res').innerHTML=`<b>${mo+1}월</b> 타발수 <b>${n}건</b>을 지웠습니다.`;
   toast(`${n}건을 지웠습니다`); if(sb)await push();
 };
@@ -1959,12 +2052,16 @@ $('#btn-sdel').onclick=async()=>{
   const n=shotCount(y,mo,c);
   if(!n){toast(`${label}에 입력된 값이 없습니다`);return}
   if(!confirm(`${label} 타발수 ${n}건을 삭제합니다. 되돌릴 수 없습니다.`))return;
-  shotClear(y,mo,c); render();
+  shotClear(y,mo,c); render(); autoGradeSoon();
   toast(`${n}건을 삭제했습니다`); if(sb)await push();
 };
+$('#btn-agrd').onclick=()=>autoGradeRun(false);
+['#agrd-mode','#agrd-base'].forEach(id=>$(id).onchange=()=>toast('[등급 자동 산정]을 눌러 반영하세요'));
+$('#agrd-on').onchange=e=>{AGRD=e.target.checked;
+  toast(AGRD?'타발수 변경 시 등급을 자동 산정합니다':'자동 산정을 껐습니다')};
 $('#btn-srst').onclick=async()=>{
   if(!confirm('타발수를 이 파일의 대장 원본(2025·2026년)으로 되돌립니다. 그동안 입력한 값은 모두 사라집니다.'))return;
-  shotReset(); render();
+  shotReset(); render(); autoGradeSoon();
   toast('초기 데이터로 복원했습니다'); if(sb)await push();
 };
 $('#gb-close').onclick=closeGB; $('#gb-cancel').onclick=closeGB; $('#gb-run').onclick=gbRun;
