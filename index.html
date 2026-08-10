@@ -569,6 +569,8 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
           <div class="spacer"></div>
           <button class="btn" id="wb-set">현재 누적타발수로 기준점 설정</button>
           <button class="btn ghost" id="wb-clr">기준점 해제</button>
+          <button class="btn ghost" id="wb-boot"
+            title="한도 초과 금형은 오늘자 정기세척 완료로, 미달 금형은 기준점 0타로 세팅합니다">타발수 기준 초기 세팅</button>
         </div>
         <div style="overflow:auto;max-height:46vh"><table class="sh" id="wbtbl">
           <thead><tr><th class="lft">고객사</th><th class="lft">품번</th><th class="lft">금형번호</th>
@@ -580,7 +582,11 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
             <b>사용 타발수 = 대장 최신 누적 − 기준 타발수</b>이며, 양산금형 100만타 · A/S금형 50만타에 도달하면 정기세척 대상이 됩니다.<br>
           · 기준점은 <b>마지막 정기세척 기록의 누적 타발수</b>가 최우선이며, 기록이 없는 금형만 아래 표의 값을 씁니다.
             신규 도입 시 <b>[현재 누적타발수로 기준점 설정]</b>을 한 번 눌러 시작점을 잡아 주세요.<br>
-          · 표의 기준 타발수 · 기준일 칸은 직접 수정할 수 있습니다 (실제 세척일 기준으로 맞출 때 사용).
+          · 표의 기준 타발수 · 기준일 칸은 직접 수정할 수 있습니다 (실제 세척일 기준으로 맞출 때 사용).<br>
+          · <b>타발수 기준 초기 세팅</b> — 도입 시 한 번만 실행합니다.
+            누적 타발수가 한도(양산 100만 · A/S 50만)를 <b>넘은 금형은 오늘자 정기세척 완료</b>로 기록하고 기준점을 현재 누적값으로 잡아 0%로 리셋하며,
+            <b>넘지 않은 금형은 기준점 0타</b>로 두어 지금까지의 누적 타발수가 그대로 진행률에 반영되게 합니다.
+            세척 이력이 이미 있으면 실행되지 않으니, 다시 하려면 이력을 비운 뒤 실행하세요.
         </p>
       </div>
       <div class="card">
@@ -2467,7 +2473,8 @@ async function wPull(silent){
       else{WASH=v.hist||[]; WBASE=v.base||{}}
       $('#w-st').textContent=`서버 동기화 완료 · 이력 ${WASH.length}건 / 기준점 ${Object.keys(WBASE).length}품번`;
     }else{
-      $('#w-st').textContent='서버에 저장된 세척 이력이 없습니다. 저장하면 새로 만들어집니다.';
+      wBootstrap(false);
+      $('#w-st').textContent=`서버에 세척 이력이 없어 타발수 기준 초기 세팅을 적용했습니다 (세척완료 ${WASH.length}품번) — [서버에 저장]을 눌러 반영하세요.`;
     }
     renderWash();
     if(!silent)toast(`세척 이력 ${WASH.length}건을 불러왔습니다`);
@@ -2691,9 +2698,45 @@ $('#wbk-run').onclick=async()=>{
   if(sb) await wPush(true);
 };
 
+/* ---------- 타발수 기준 초기 세팅 ----------
+   한도 초과 금형 : 오늘자 정기세척 완료 기록 + 기준점 = 현재 누적 (0%로 리셋)
+   한도 미달 금형 : 기준점 0타 (지금까지 누적이 그대로 진행률)                    */
+function wBootstrap(force){
+  if(!force&&(WASH.length||Object.keys(WBASE).length))return null;
+  const d=today(), by=me||'초기 세팅';
+  const done=[], keep=[];
+  MOLDS.forEach((m,i)=>{
+    const cum=wCum(m.품번), lim=WLIMIT[wkind(m.등급)];
+    if(cum!=null&&cum>=lim){
+      WASH.push({id:Date.now()+i,품번:m.품번,고객사:m.고객사,금형번호:m.금형번호,등급:m.등급,유형:wkind(m.등급),
+        생산완료일:d,세척일:d,구분:'정기세척 (타발수·기간 기준)',타발수:cum,
+        사용타발수:cum,기준타발수:0,방청유:'방청유 (일반)',단계:6,판정:'양호',
+        실시자:by,특이:'타발수 한도 초과 · 초기 세팅 시 세척완료 처리'});
+      WBASE[m.품번]={타발수:cum,일자:d};
+      done.push(m.품번);
+    }else{
+      WBASE[m.품번]={타발수:0,일자:d};
+      keep.push(m.품번);
+    }
+  });
+  return {done,keep};
+}
+$('#wb-boot').onclick=async()=>{
+  const pre=MOLDS.filter(m=>{const c=wCum(m.품번);return c!=null&&c>=WLIMIT[wkind(m.등급)]});
+  if(WASH.length&&!confirm(`이미 세척 이력 ${WASH.length}건이 있습니다.\n초기 세팅을 실행하면 기존 기준점이 모두 덮어써집니다. 계속할까요?`))return;
+  if(!confirm(`타발수 기준으로 초기 세팅합니다.\n\n`+
+    `  · 한도 초과 ${pre.length}품번 → 오늘(${today()})자 정기세척 완료로 기록 · 0%로 리셋\n`+
+    `  · 나머지 ${MOLDS.length-pre.length}품번 → 기준점 0타 (누적 타발수가 그대로 진행률)\n\n계속할까요?`))return;
+  const r=wBootstrap(true);
+  renderWash();
+  toast(`초기 세팅 완료 · 세척완료 ${r.done.length}품번 / 기준점 ${r.keep.length}품번`);
+  if(sb) await wPush(true);
+};
+
 function wInit(){
   wFillCust(); wFillMolds(); wDrawSteps();
   $('#w-pdate').value=today(); $('#w-date').value=today();
+  wBootstrap(false);
   renderWash();
 }
 
