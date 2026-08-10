@@ -524,6 +524,7 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
         <select id="w-fc"><option value="">고객사 전체</option></select>
         <input type="search" id="w-q" placeholder="품번 · 금형번호 검색">
         <div class="spacer"></div>
+        <button class="btn" id="w-bulk">도래 금형 일괄 세척완료</button>
         <button class="btn ghost" id="w-scsv">세척현황 내보내기</button>
       </div>
       <div class="list" id="w-list"></div>
@@ -535,6 +536,7 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
         <select id="w-hc"><option value="">고객사 전체</option></select>
         <input type="search" id="w-hq" placeholder="품번 · 실시자 검색">
         <div class="spacer"></div>
+        <button class="btn" id="w-paste">MES 세척이력 붙여넣기</button>
         <button class="btn ghost" id="w-hcsv">세척이력 내보내기</button>
       </div>
       <div class="card" style="padding:0;overflow:auto;max-height:70vh"><table id="wtbl">
@@ -909,6 +911,85 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       품번을 바꾸려면 삭제 후 다시 등록하세요.</p>
     </div>
     <div class="mft"><div class="spacer"></div><button class="btn ghost" id="mm-cancel">닫기</button></div>
+  </div>
+</div>
+<!-- MES 세척이력 붙여넣기 -->
+<div class="mask" id="wpmask">
+  <div class="modal" style="max-width:760px" role="dialog" aria-modal="true" aria-labelledby="wp-title">
+    <div class="mhd"><h2 id="wp-title">MES 세척이력 붙여넣기</h2>
+      <button class="x" id="wp-close" aria-label="닫기">&times;</button></div>
+    <div class="mbd">
+      <div class="card">
+        <h3>기본값 · 붙여넣은 자료에 없는 항목에만 적용</h3>
+        <div class="grid3">
+          <div class="fld"><label>세척일</label><input type="date" id="wp-date"></div>
+          <div class="fld"><label>실시자</label><input type="text" id="wp-by" placeholder="금형관리자"></div>
+          <div class="fld"><label>세척 구분</label>
+            <select id="wp-kind"><option>정기세척 (타발수·기간 기준)</option><option>일상세척 (생산완료 후)</option></select></div>
+          <div class="fld"><label>누적 타발수</label>
+            <select id="wp-shot"><option value="auto">없으면 타발수 대장값 사용</option><option value="only">붙여넣은 값만 사용</option></select></div>
+          <div class="fld"><label>마스터에 없는 품번</label>
+            <select id="wp-miss"><option value="skip">무시하고 목록만 표시</option><option value="add">그대로 이력 등록</option></select></div>
+          <div class="fld"><label>중복 (같은 품번·같은 날짜)</label>
+            <select id="wp-dup"><option value="skip">건너뛰기</option><option value="add">그대로 추가</option></select></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>붙여넣기</h3>
+        <textarea id="wp-txt" rows="11" style="width:100%;font-family:var(--mono);font-size:12px"
+          placeholder="1967-391&#9;2026-07-31&#9;14491535&#9;강영태&#10;1972-383&#9;2026-07-31&#9;18395029&#10;1951-386&#9;2026-07-28"></textarea>
+        <p class="note" style="margin-top:9px">
+          품번은 반드시 포함되어야 하며, <b>날짜 · 타발수 · 실시자 · 구분(정기/일상)</b>은 순서와 상관없이 자동으로 인식합니다.
+          열이 더 많아도 됩니다 — 인식되지 않는 값은 무시합니다.<br>
+          날짜 형식 : <code>2026-07-31</code> · <code>2026/07/31</code> · <code>2026.07.31</code> · <code>20260731</code> 모두 인식.
+        </p>
+        <div class="bar" style="margin:10px 0 0"><button class="btn ghost" id="wp-prev">미리보기</button></div>
+        <div class="note" id="wp-res" style="margin-top:9px"></div>
+      </div>
+    </div>
+    <div class="mft">
+      <button class="btn" id="wp-apply">반영하기</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="wp-cancel">닫기</button>
+    </div>
+  </div>
+</div>
+<!-- 일괄 세척완료 -->
+<div class="mask" id="wbmask">
+  <div class="modal" style="max-width:660px" role="dialog" aria-modal="true" aria-labelledby="wbk-title">
+    <div class="mhd"><h2 id="wbk-title">정기세척 일괄 등록</h2>
+      <button class="x" id="wbk-close" aria-label="닫기">&times;</button></div>
+    <div class="mbd">
+      <div class="card">
+        <h3>등록 범위</h3>
+        <div class="grid2">
+          <div class="fld"><label>대상</label>
+            <select id="wbk-scope">
+              <option value="over">정기세척 도래 금형만</option>
+              <option value="oversoon">도래 + 임박(90%↑) 금형</option>
+              <option value="filter">현재 화면 필터 대상 전체</option>
+            </select></div>
+          <div class="fld"><label>고객사</label><select id="wbk-c"><option value="">전체</option></select></div>
+          <div class="fld"><label>세척일</label><input type="date" id="wbk-date"></div>
+          <div class="fld"><label>실시자</label><input type="text" id="wbk-by" placeholder="금형관리자"></div>
+        </div>
+        <p class="note" id="wbk-prev" style="margin-top:11px"></p>
+      </div>
+      <div class="card">
+        <h3>등록 내용</h3>
+        <p class="note">
+          · 대상 금형에 <b>정기세척 · 6단계 완료 · 판정 양호</b> 이력을 만듭니다.<br>
+          · 누적 타발수는 <b>타발수 대장의 최신 누적값</b>이 들어가며, 그 값이 새 <b>기준점</b>이 되어 사용 타발수가 0으로 리셋됩니다.<br>
+          · 같은 품번에 같은 날짜의 세척 이력이 이미 있으면 건너뜁니다.<br>
+          · <b>실제 세척일·실시자와 다르면</b> 등록 후 세척 이력에서 수정하세요.
+        </p>
+      </div>
+    </div>
+    <div class="mft">
+      <button class="btn" id="wbk-run">일괄 등록</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="wbk-cancel">닫기</button>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -2070,7 +2151,7 @@ $('#gbmask').onclick=e=>{if(e.target===$('#gbmask'))closeGB()};
 $('#bmask').onclick=e=>{if(e.target===$('#bmask'))closeB()};
 ['#b-y','#b-m1','#b-m2','#b-c','#b-d'].forEach(id=>$(id).onchange=bPrev);
 $('#mask').onclick=e=>{if(e.target===$('#mask'))closeM()};
-document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB();closeGB();closeMM()}};
+document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB();closeGB();closeMM();closeWP();closeWBK()}};
 $('#btn-conn').onclick=async()=>{await connect(false);await wPull(true)};
 $('#btn-save').onclick=async()=>{await push();await wPush(true)};
 $('#btn-csv').onclick=()=>{
@@ -2467,6 +2548,149 @@ $('#w-imp').onchange=e=>{
   }catch{toast('파일 형식이 올바르지 않습니다')}};
   r.readAsText(f);
 };
+/* ---------- MES 세척이력 붙여넣기 ---------- */
+function wpParse(){
+  const txt=$('#wp-txt').value, defD=$('#wp-date').value||today();
+  const defBy=$('#wp-by').value.trim(), defK=$('#wp-kind').value;
+  const rows=[], miss=[], bad=[];
+  txt.split(/\r?\n/).forEach(ln=>{
+    if(!ln.trim())return;
+    const t=ln.split(/\t|,|\s{2,}|\s/).map(x=>x.trim()).filter(Boolean);
+    if(!t.length)return;
+    let pn=null,date=null,shot=null,by=null,kind=null;
+    const rest=[];
+    t.forEach(v=>{
+      let m=/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/.exec(v);
+      if(!m)m=/^(\d{4})(\d{2})(\d{2})$/.exec(v);
+      if(m&&!date&&+m[1]>=2000&&+m[1]<2100&&+m[2]>=1&&+m[2]<=12&&+m[3]>=1&&+m[3]<=31){
+        date=`${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;return}
+      if(/정기/.test(v)){kind='정기세척 (타발수·기간 기준)';return}
+      if(/일상/.test(v)){kind='일상세척 (생산완료 후)';return}
+      if(/^[0-9,]+$/.test(v)&&v.replace(/,/g,'').length>=4&&shot==null){shot=parseInt(v.replace(/,/g,''),10);return}
+      rest.push(v);
+    });
+    // 품번 : 남은 토큰 중 대장/마스터에 있는 것 우선, 없으면 첫 토큰
+    for(const v of rest){const k=findPn(v)||(MOLDS.find(m=>norm(m.품번)===norm(v))||{}).품번;
+      if(k){pn=k;break}}
+    if(!pn){
+      const cand=rest.find(v=>/[0-9]/.test(v)&&v.length>=4);
+      if(!cand){bad.push(ln);return}
+      pn=cand; miss.push(cand);
+    }
+    by=rest.filter(v=>v!==pn&&!/^[0-9,\-]+$/.test(v)).join(' ')||defBy;
+    rows.push({pn,date:date||defD,shot,by,kind:kind||defK,known:MOLDS.some(m=>m.품번===pn)});
+  });
+  return {rows,miss:[...new Set(miss)],bad};
+}
+function wpBuild(){
+  const {rows,miss,bad}=wpParse();
+  const useAuto=$('#wp-shot').value==='auto', keepMiss=$('#wp-miss').value==='add';
+  const dupSkip=$('#wp-dup').value==='skip';
+  const out=[],skipped=[],unknown=[];
+  rows.forEach(r=>{
+    if(!r.known&&!keepMiss){unknown.push(r.pn);return}
+    if(dupSkip&&WASH.some(h=>h.품번===r.pn&&h.세척일===r.date)){skipped.push(r.pn);return}
+    let shot=r.shot;
+    if(shot==null&&useAuto)shot=wCum(r.pn);
+    out.push(Object.assign({},r,{shot:shot==null?'':shot}));
+  });
+  return {out,unknown,skipped,miss,bad};
+}
+function wpPrev(){
+  const {out,unknown,skipped,miss,bad}=wpBuild();
+  const reg=out.filter(r=>r.kind.startsWith('정기')).length;
+  const parts=[`반영 대상 <b style="color:var(--ok)">${out.length}건</b> (정기 ${reg} · 일상 ${out.length-reg})`];
+  if(skipped.length)parts.push(`중복 제외 <b>${skipped.length}건</b>`);
+  if(unknown.length)parts.push(`마스터 미등록 제외 <b style="color:var(--bad)">${unknown.length}건</b>`);
+  if(bad.length)parts.push(`인식 실패 ${bad.length}행`);
+  const rowTxt=out.slice(0,8).map(r=>
+    `  ${r.date} · ${r.pn} · ${r.shot===''?'타발수 없음':nf(r.shot)+'타'} · ${r.kind.split(' ')[0]}${r.by?' · '+r.by:''}`).join('<br>');
+  $('#wp-res').innerHTML=parts.join(' · ')+
+    (rowTxt?`<div style="margin-top:8px;font-family:var(--mono);font-size:11.5px">${rowTxt}${out.length>8?`<br>  … 외 ${out.length-8}건`:''}</div>`:'')+
+    (unknown.length?`<div style="margin-top:6px;color:var(--bad)">미등록 품번: ${[...new Set(unknown)].slice(0,20).join(', ')}</div>`:'')+
+    (bad.length?`<div style="margin-top:6px;color:var(--bad)">인식 실패: ${bad.slice(0,3).join(' / ')}</div>`:'');
+  return out;
+}
+async function wpApply(){
+  const out=wpPrev();
+  if(!out.length){toast('반영할 자료가 없습니다');return}
+  if(!confirm(`세척 이력 ${out.length}건을 등록합니다.\n정기세척 건은 해당 타발수가 새 기준점이 되어 사용 타발수가 리셋됩니다. 계속할까요?`))return;
+  let base=0;
+  out.sort((a,b)=>a.date.localeCompare(b.date)).forEach((r,i)=>{
+    const m=MOLDS.find(x=>x.품번===r.pn)||{};
+    const st=m.품번?wState(m):null;
+    WASH.push({id:Date.now()+i,품번:r.pn,고객사:m.고객사||custOf(r.pn),금형번호:m.금형번호||'',
+      등급:m.등급||'',유형:m.등급?wkind(m.등급):'양산금형',
+      생산완료일:r.date,세척일:r.date,구분:r.kind,타발수:r.shot,
+      사용타발수:st?st.used:null,기준타발수:st&&st.base?st.base.v:null,
+      방청유:'방청유 (일반)',단계:6,판정:'양호',실시자:r.by||'',특이:'MES 세척이력 반영'});
+    if(r.kind.startsWith('정기')&&r.shot!==''){WBASE[r.pn]={타발수:Number(r.shot),일자:r.date};base++}
+  });
+  closeWP(); renderWash();
+  toast(`세척 이력 ${out.length}건 등록${base?` · 기준점 ${base}품번 갱신`:''}`);
+  if(sb) await wPush(true);
+}
+const closeWP=()=>$('#wpmask').classList.remove('on');
+$('#w-paste').onclick=()=>{
+  $('#wp-date').value=today(); $('#wp-by').value=me||'';
+  $('#wp-txt').value=''; $('#wp-res').innerHTML='';
+  $('#wpmask').classList.add('on'); $('#wp-txt').focus();
+};
+$('#wp-close').onclick=closeWP; $('#wp-cancel').onclick=closeWP;
+$('#wp-prev').onclick=wpPrev; $('#wp-apply').onclick=wpApply;
+$('#wpmask').onclick=e=>{if(e.target===$('#wpmask'))closeWP()};
+
+/* ---------- 정기세척 일괄 등록 ---------- */
+function wbkTargets(){
+  const sc=$('#wbk-scope').value, c=$('#wbk-c').value;
+  return MOLDS.filter(m=>{
+    if(c&&m.고객사!==c)return false;
+    const st=wState(m);
+    if(sc==='over')return st.k==='over';
+    if(sc==='oversoon')return st.k==='over'||st.k==='soon';
+    return true;
+  });
+}
+function wbkPrev(){
+  const list=wbkTargets(), d=$('#wbk-date').value||today();
+  const dup=list.filter(m=>WASH.some(h=>h.품번===m.품번&&h.세척일===d)).length;
+  const noCum=list.filter(m=>wCum(m.품번)==null).length;
+  $('#wbk-prev').innerHTML=`대상 <b style="color:var(--ok)">${list.length-dup}품번</b>`+
+    (dup?` · 같은 날짜 이력 있어 제외 <b>${dup}품번</b>`:'')+
+    (noCum?` · 대장 누적 없음 <b style="color:var(--warn)">${noCum}품번</b> (타발수 없이 등록)`:'')+
+    (list.length?`<div style="margin-top:7px;font-family:var(--mono);font-size:11.5px">
+      ${list.slice(0,8).map(m=>`  ${m.품번} · ${wnf(wCum(m.품번))}타`).join('<br>')}
+      ${list.length>8?`<br>  … 외 ${list.length-8}품번`:''}</div>`:'');
+}
+const closeWBK=()=>$('#wbmask').classList.remove('on');
+$('#w-bulk').onclick=()=>{
+  $('#wbk-c').innerHTML='<option value="">전체</option>'+CUSTS.map(c=>`<option>${c}</option>`).join('');
+  $('#wbk-date').value=today(); $('#wbk-by').value=me||'';
+  wbkPrev(); $('#wbmask').classList.add('on');
+};
+$('#wbk-close').onclick=closeWBK; $('#wbk-cancel').onclick=closeWBK;
+['#wbk-scope','#wbk-c','#wbk-date'].forEach(id=>$(id).onchange=wbkPrev);
+$('#wbmask').onclick=e=>{if(e.target===$('#wbmask'))closeWBK()};
+$('#wbk-run').onclick=async()=>{
+  const by=$('#wbk-by').value.trim();
+  if(!by){toast('실시자를 입력하세요');$('#wbk-by').focus();return}
+  const d=$('#wbk-date').value||today();
+  const list=wbkTargets().filter(m=>!WASH.some(h=>h.품번===m.품번&&h.세척일===d));
+  if(!list.length){toast('등록할 대상이 없습니다');return}
+  if(!confirm(`${list.length}품번에 ${d} 자 정기세척 이력을 등록합니다.\n각 금형의 기준점이 현재 누적 타발수로 갱신되어 사용 타발수가 0으로 리셋됩니다. 계속할까요?`))return;
+  list.forEach((m,i)=>{
+    const st=wState(m), cum=wCum(m.품번);
+    WASH.push({id:Date.now()+i,품번:m.품번,고객사:m.고객사,금형번호:m.금형번호,등급:m.등급,유형:wkind(m.등급),
+      생산완료일:d,세척일:d,구분:'정기세척 (타발수·기간 기준)',타발수:cum==null?'':cum,
+      사용타발수:st.used,기준타발수:st.base?st.base.v:null,
+      방청유:'방청유 (일반)',단계:6,판정:'양호',실시자:by,특이:'정기세척 일괄 등록'});
+    if(cum!=null)WBASE[m.품번]={타발수:cum,일자:d};
+  });
+  closeWBK(); renderWash();
+  toast(`${list.length}품번 정기세척 완료 처리했습니다`);
+  if(sb) await wPush(true);
+};
+
 function wInit(){
   wFillCust(); wFillMolds(); wDrawSteps();
   $('#w-pdate').value=today(); $('#w-date').value=today();
