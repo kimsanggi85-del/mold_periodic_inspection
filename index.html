@@ -5930,6 +5930,8 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       <div class="spacer"></div>
       <button class="btn ghost" id="btn-auto">주기 기준 자동 배정</button>
       <button class="btn ghost" id="btn-pcsv">계획표 내보내기</button>
+      <button class="btn ghost" id="btn-planp">📄 연간 계획표 인쇄</button>
+      <button class="btn" id="btn-planx">⬇ 연간 계획표 Excel</button>
     </div>
     <div class="msum" id="msum"><div class="ms">
     <b>22/22</b><span>1월</span></div><div class="ms">
@@ -12574,6 +12576,317 @@ $('#qrFile').onchange   = function(){ qrFromImage(this); };
 $('#qrMask').addEventListener('click',e=>{ if(e.target.id==='qrMask') qrClose(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#qrMask').classList.contains('on')) qrClose(); });
 document.addEventListener('visibilitychange',()=>{ if(document.hidden&&QS.run) qrStop(); });
+
+</script>
+
+<!-- 연간 계획표 내보내기 -->
+<script>
+/* ================================================================
+   📄 연간 정기점검 계획표 — Excel(.xlsx) 내보내기 · 인쇄용 보기
+   외부 라이브러리 없이 xlsx(zip)를 직접 생성합니다.
+================================================================ */
+
+/* ---------- CRC32 + ZIP(store) ---------- */
+const _crcT=(()=>{const t=new Uint32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function _crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=_crcT[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function _zip(files){
+  const enc=new TextEncoder(), parts=[], dir=[]; let off=0;
+  const u16=v=>[v&255,(v>>8)&255], u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>24)&255];
+  for(const f of files){
+    const name=enc.encode(f.name), data=typeof f.data==='string'?enc.encode(f.data):f.data;
+    const crc=_crc32(data);
+    const lh=[].concat([0x50,0x4b,0x03,0x04],u16(20),u16(0),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(lh), name, data);
+    dir.push({name,crc,len:data.length,off});
+    off += lh.length + name.length + data.length;
+  }
+  const cd=[];
+  for(const d of dir){
+    const h=[].concat([0x50,0x4b,0x01,0x02],u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),
+      u32(d.crc),u32(d.len),u32(d.len),u16(d.name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(d.off));
+    cd.push(new Uint8Array(h), d.name);
+  }
+  const cdLen=cd.reduce((s,x)=>s+x.length,0);
+  const end=new Uint8Array([].concat([0x50,0x4b,0x05,0x06],u16(0),u16(0),
+    u16(dir.length),u16(dir.length),u32(cdLen),u32(off),u16(0)));
+  const all=[...parts,...cd,end];
+  const total=all.reduce((s,x)=>s+x.length,0), out=new Uint8Array(total);
+  let p=0; for(const x of all){out.set(x,p);p+=x.length}
+  return out;
+}
+
+/* ---------- 최소 xlsx ---------- */
+const _xe = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const _col = n => { let s=''; while(n>0){const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26} return s };
+
+/* 스타일 인덱스
+   0 기본 · 1 제목 · 2 비고 · 3 헤더 · 4 테두리 · 5 테두리중앙
+   6 실시(초록) · 7 계획(노랑) · 8 미실시(빨강) · 9 백분율 · 10 합계 */
+const _STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="164" formatCode="0%"/></numFmts>
+<fonts count="5">
+<font><sz val="10"/><name val="맑은 고딕"/></font>
+<font><b/><sz val="16"/><name val="맑은 고딕"/></font>
+<font><sz val="9"/><color rgb="FF4A5568"/><name val="맑은 고딕"/></font>
+<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="맑은 고딕"/></font>
+<font><b/><sz val="10"/><name val="맑은 고딕"/></font>
+</fonts>
+<fills count="7">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF1F3A5F"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFDDF0EA"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFDF3DC"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF9E2E0"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFE8EDF3"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color rgb="FFB7BEC7"/></left><right style="thin"><color rgb="FFB7BEC7"/></right><top style="thin"><color rgb="FFB7BEC7"/></top><bottom style="thin"><color rgb="FFB7BEC7"/></bottom><diagonal/></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="11">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+function _sheetXml(sh){
+  let x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+   +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
+  if(sh.freeze) x+=`<sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane xSplit="${sh.freeze[0]}" ySplit="${sh.freeze[1]}" topLeftCell="${_col(sh.freeze[0]+1)}${sh.freeze[1]+1}" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>`;
+  else x+='<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>';
+  if(sh.cols&&sh.cols.length){
+    x+='<cols>';
+    sh.cols.forEach((w,i)=>{ x+=`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>` });
+    x+='</cols>';
+  }
+  x+='<sheetData>';
+  sh.rows.forEach((row,ri)=>{
+    if(!row||!row.length){ return; }
+    x+=`<row r="${ri+1}">`;
+    row.forEach((cell,ci)=>{
+      if(cell==null) return;
+      const ref=_col(ci+1)+(ri+1);
+      const v=(typeof cell==='object')?cell.v:cell;
+      const s=(typeof cell==='object'&&cell.s!=null)?cell.s:0;
+      if(v==null||v==='') { if(s) x+=`<c r="${ref}" s="${s}"/>`; return; }
+      if(typeof v==='number') x+=`<c r="${ref}" s="${s}"><v>${v}</v></c>`;
+      else x+=`<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${_xe(v)}</t></is></c>`;
+    });
+    x+='</row>';
+  });
+  x+='</sheetData>';
+  if(sh.merges&&sh.merges.length)
+    x+=`<mergeCells count="${sh.merges.length}">`+sh.merges.map(m=>`<mergeCell ref="${m}"/>`).join('')+'</mergeCells>';
+  x+='<pageSetup orientation="landscape"/></worksheet>';
+  return x;
+}
+
+function buildXlsx(sheets, filename){
+  const files=[
+    {name:'[Content_Types].xml', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      +'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      +'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      +'<Default Extension="xml" ContentType="application/xml"/>'
+      +'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
+      +'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+      +'</Types>'},
+    {name:'_rels/.rels', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      +'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      +'</Relationships>'},
+    {name:'xl/workbook.xml', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      +'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+      + sheets.map((s,i)=>`<sheet name="${_xe(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')
+      +'</sheets></workbook>'},
+    {name:'xl/_rels/workbook.xml.rels', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')
+      +`<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
+      +'</Relationships>'},
+    {name:'xl/styles.xml', data:_STYLES}
+  ];
+  sheets.forEach((s,i)=>files.push({name:`xl/worksheets/sheet${i+1}.xml`, data:_sheetXml(s)}));
+  const blob=new Blob([_zip(files)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove()},1500);
+}
+
+/* ---------- 계획표 데이터 산출 ---------- */
+function planData(y){
+  const cur=new Date(), curY=cur.getFullYear(), curM=cur.getMonth()+1;
+  const elapsed = mo => (y<curY) || (y===curY && mo<curM);
+  const tgt=MOLDS.filter(m=>CYCLE[m.등급]>0), exc=MOLDS.filter(m=>!CYCLE[m.등급]);
+  const rows=tgt.map(m=>{
+    const plan=(PLAN[m.품번]||[]).slice().sort((a,b)=>a-b);
+    const cells=[], done=[], miss=[];
+    for(let mo=1;mo<=12;mo++){
+      if(!plan.includes(mo)){ cells.push(''); continue }
+      if(doneIn(m.품번,y,mo)){ cells.push('●'); done.push(mo) }
+      else if(elapsed(mo)){ cells.push('▲'); miss.push(mo) }
+      else cells.push('○');
+    }
+    const due=plan.filter(mo=>elapsed(mo)||done.includes(mo)).length;
+    const hs=HIST.filter(h=>h.품번===m.품번&&String(h.점검일).startsWith(String(y)))
+                 .sort((a,b)=>String(b.점검일).localeCompare(String(a.점검일)));
+    return {m, plan, cells, done, miss, due, rate: due?done.length/due:null, last: hs[0]?hs[0].점검일:''};
+  }).sort((a,b)=> (a.m.고객사||'').localeCompare(b.m.고객사||'','ko') || a.m.품번.localeCompare(b.m.품번,'ko'));
+  return {rows, exc, y, curY, curM};
+}
+
+/* ---------- Excel 내보내기 ---------- */
+function exportPlanXlsx(){
+  const y=planYear();
+  const D=planData(y);
+  const asof=new Date().toISOString().slice(0,10);
+  const H=3, C=5, N=4, PC=9, T=10, TT=1, NOTE=2;
+  const FILL={'●':6,'○':7,'▲':8};
+
+  /* 시트1 — 연간계획표 */
+  const s1=[];
+  s1.push([{v:`${y}년 금형 정기점검 연간 계획표`,s:TT}]);
+  s1.push([{v:`문서번호 TJP-EU0702-01   |   등급별 점검주기 : A 1회/년 · B 1회/6개월 · C 1회/3개월 · F 사용시(계획 제외)   |   기준일 ${asof}`,s:NOTE}]);
+  s1.push([{v:'범례 :  ●  실시 완료      ○  실시 예정      ▲  미실시(기한 경과)      ※ 관리단위는 품번입니다.',s:NOTE}]);
+  s1.push([]);
+  const head=['순번','고객사','품번','금형번호','등급','점검주기'];
+  for(let mo=1;mo<=12;mo++) head.push(mo+'월');
+  head.push('계획','실시','실시율','최근 점검일');
+  s1.push(head.map(t=>({v:t,s:H})));
+  D.rows.forEach((r,i)=>{
+    const row=[{v:i+1,s:C},{v:r.m.고객사||'',s:N},{v:r.m.품번,s:N},{v:r.m.금형번호||'-',s:N},
+               {v:r.m.등급,s:C},{v:CYCTXT[r.m.등급]||'',s:C}];
+    r.cells.forEach(v=>row.push({v, s: v?FILL[v]:C}));
+    row.push({v:r.plan.length,s:C},{v:r.done.length,s:C},
+             r.rate==null?{v:'',s:C}:{v:r.rate,s:PC},{v:r.last||'-',s:C});
+    s1.push(row);
+  });
+  const tot=['합 계','','','','',''];
+  const totRow=tot.map(t=>({v:t,s:T}));
+  for(let mo=1;mo<=12;mo++)
+    totRow.push({v: D.rows.filter(r=>r.plan.includes(mo)).length, s:T});
+  totRow.push({v:D.rows.reduce((s,r)=>s+r.plan.length,0),s:T},
+              {v:D.rows.reduce((s,r)=>s+r.done.length,0),s:T},
+              {v:(()=>{const a=D.rows.filter(r=>r.rate!=null);return a.length?a.reduce((s,r)=>s+r.rate,0)/a.length:0})(),s:PC},
+              {v:'',s:T});
+  s1.push(totRow);
+  s1.push([]);
+  s1.push([{v:`※ 계획 월은 정기점검 대장(mold_periodic_v1)의 배정값이며, 실시 표시는 등록된 점검이력의 점검일 기준입니다.`,s:NOTE}]);
+  s1.push([{v:`※ 실시율 = 실시 건수 ÷ 기준일(${asof})까지 도래한 계획 건수. 미도래 계획은 분모에서 제외했습니다.`,s:NOTE}]);
+
+  /* 시트2 — 월별집계 */
+  const s2=[];
+  s2.push([{v:`${y}년 월별 정기점검 계획 · 실적`,s:TT}]);
+  s2.push([]);
+  s2.push(['월','계획 건수','실시 건수','미실시','실시율'].map(t=>({v:t,s:H})));
+  let tp=0,td=0,tm=0;
+  for(let mo=1;mo<=12;mo++){
+    const p=D.rows.filter(r=>r.plan.includes(mo)).length;
+    const d=D.rows.filter(r=>r.done.includes(mo)).length;
+    const ms=D.rows.filter(r=>r.miss.includes(mo)).length;
+    tp+=p; td+=d; tm+=ms;
+    s2.push([{v:mo+'월',s:C},{v:p,s:C},{v:d,s:C},{v:ms,s:C},{v:p?d/p:0,s:PC}]);
+  }
+  s2.push([{v:'연간 합계',s:T},{v:tp,s:T},{v:td,s:T},{v:tm,s:T},{v:tp?td/tp:0,s:PC}]);
+
+  /* 시트3 — 고객사별 */
+  const s3=[];
+  s3.push([{v:`${y}년 고객사별 정기점검 대상 현황`,s:TT}]);
+  s3.push([]);
+  s3.push(['고객사','대상 품번','계획 건수','실시 건수','F등급(제외)'].map(t=>({v:t,s:H})));
+  const custs=[...new Set(D.rows.map(r=>r.m.고객사||'미등록'))].sort((a,b)=>a.localeCompare(b,'ko'));
+  custs.forEach(cu=>{
+    const g=D.rows.filter(r=>(r.m.고객사||'미등록')===cu);
+    s3.push([{v:cu,s:N},{v:g.length,s:C},
+             {v:g.reduce((s,r)=>s+r.plan.length,0),s:C},
+             {v:g.reduce((s,r)=>s+r.done.length,0),s:C},
+             {v:D.exc.filter(m=>(m.고객사||'미등록')===cu).length,s:C}]);
+  });
+
+  /* 시트4 — F등급 제외 */
+  const s4=[];
+  s4.push([{v:'F등급 — 정기점검 계획 제외 대상 (사용 시 점검)',s:TT}]);
+  s4.push([{v:'※ A/S · 단종 금형으로 TJP-EU0702-01 에 따라 연간 계획 대상에서 제외되며, 사용 시 점검으로 관리합니다.',s:NOTE}]);
+  s4.push([]);
+  s4.push(['순번','고객사','품번','금형번호'].map(t=>({v:t,s:H})));
+  D.exc.forEach((m,i)=>s4.push([{v:i+1,s:C},{v:m.고객사||'',s:N},{v:m.품번,s:N},{v:m.금형번호||'-',s:N}]));
+
+  const monW=Array(12).fill(4.6);
+  buildXlsx([
+    {name:'연간계획표', rows:s1, cols:[6,13,20,15,9,11,...monW,6,6,8,13], freeze:[2,5],
+     merges:['A1:V1','A2:V2','A3:V3']},
+    {name:'월별집계',  rows:s2, cols:[12,11,11,9,10]},
+    {name:'고객사별',  rows:s3, cols:[16,12,12,11,13]},
+    {name:'F등급_제외목록', rows:s4, cols:[6,14,20,15]}
+  ], `금형_정기점검_연간계획표_${y}.xlsx`);
+  toast(`${y}년 연간 계획표를 내려받았습니다`);
+}
+
+/* ---------- 인쇄용 보기 ---------- */
+function printPlan(){
+  const y=planYear(), D=planData(y), asof=new Date().toISOString().slice(0,10);
+  const mk=v=>v==='●'?'<td class="d">●</td>':v==='○'?'<td class="p">○</td>':v==='▲'?'<td class="x">▲</td>':'<td></td>';
+  const body=D.rows.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${r.m.고객사||''}</td>
+    <td class="l b">${r.m.품번}</td><td class="l">${r.m.금형번호||'-'}</td>
+    <td>${r.m.등급}</td><td>${CYCTXT[r.m.등급]||''}</td>${r.cells.map(mk).join('')}
+    <td>${r.plan.length}</td><td>${r.done.length}</td>
+    <td>${r.rate==null?'-':Math.round(r.rate*100)+'%'}</td><td>${r.last||'-'}</td></tr>`).join('');
+  const mtot=[]; for(let mo=1;mo<=12;mo++) mtot.push(D.rows.filter(r=>r.plan.includes(mo)).length);
+  const w=window.open('','_blank');
+  if(!w){ toast('팝업이 차단되었습니다 — 허용 후 다시 시도하세요'); return }
+  w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
+<title>${y}년 금형 정기점검 연간 계획표</title><style>
+@page{size:A3 landscape;margin:10mm}
+body{font-family:'맑은 고딕',sans-serif;color:#16191D;margin:0;padding:14px}
+h1{font-size:19px;margin:0 0 4px}
+.sub{font-size:11px;color:#5A6572;margin-bottom:3px}
+.appr{float:right;border-collapse:collapse;margin-left:14px}
+.appr td,.appr th{border:1px solid #6B7280;width:56px;height:26px;text-align:center;font-size:11px}
+.appr th{background:#E8EDF3;height:20px}
+table.g{border-collapse:collapse;width:100%;font-size:10px;margin-top:8px}
+table.g th,table.g td{border:1px solid #B7BEC7;padding:2px 3px;text-align:center}
+table.g th{background:#1F3A5F;color:#fff;font-size:10px}
+td.l{text-align:left}td.b{font-weight:700}
+td.d{background:#DDF0EA;font-weight:700}
+td.p{background:#FDF3DC}
+td.x{background:#F9E2E0;font-weight:700;color:#9E2B25}
+tr.tot td{background:#E8EDF3;font-weight:700}
+.note{font-size:10px;color:#5A6572;margin-top:6px}
+</style></head><body>
+<table class="appr"><tr><th>작성</th><th>검토</th><th>승인</th></tr><tr><td></td><td></td><td></td></tr></table>
+<h1>${y}년 금형 정기점검 연간 계획표</h1>
+<div class="sub">문서번호 TJP-EU0702-01 · 등급별 점검주기 A 1회/년 · B 1회/6개월 · C 1회/3개월 · F 사용시(계획 제외) · 기준일 ${asof}</div>
+<div class="sub">범례 ● 실시 완료 · ○ 실시 예정 · ▲ 미실시(기한 경과) · 관리단위 품번 · 대상 ${D.rows.length}품번 (F등급 ${D.exc.length}품번 제외)</div>
+<table class="g"><thead><tr><th>순번</th><th>고객사</th><th>품번</th><th>금형번호</th><th>등급</th><th>주기</th>
+${Array.from({length:12},(_,i)=>`<th>${i+1}월</th>`).join('')}<th>계획</th><th>실시</th><th>실시율</th><th>최근 점검일</th></tr></thead>
+<tbody>${body}
+<tr class="tot"><td colspan="6">합 계</td>${mtot.map(v=>`<td>${v}</td>`).join('')}
+<td>${D.rows.reduce((s,r)=>s+r.plan.length,0)}</td><td>${D.rows.reduce((s,r)=>s+r.done.length,0)}</td><td colspan="2"></td></tr>
+</tbody></table>
+<div class="note">※ 계획 월은 정기점검 대장의 배정값이며, 실시 표시는 등록된 점검이력의 점검일 기준입니다. 실시율 분모에서 미도래 계획은 제외했습니다.</div>
+</body></html>`);
+  w.document.close();
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 400);
+}
+
+$('#btn-planx').onclick = exportPlanXlsx;
+$('#btn-planp').onclick = printPlan;
 
 </script>
 </body></html>
