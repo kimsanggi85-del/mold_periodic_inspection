@@ -12495,21 +12495,72 @@ function qrParse(raw){
 }
 const qrN = v => String(v||'').toUpperCase().replace(/[^A-Z0-9가-힣]/g,'');
 
+/* ── 품번·재번 표기 차이 흡수 매칭 ──────────────────────────
+   5 완전일치 · 4 기호차이 · 3 괄호/앞자리0 차이 · 2 부기 접미 차이 · 1 숫자코어 일치
+   후보가 둘 이상이면 매칭하지 않는다(오매칭 방지).                */
+const _up     = s => String(s==null?'':s).toUpperCase().trim();
+const _noPar  = s => _up(s).replace(/\([^)]*\)/g,' ');
+const _alnum  = s => _up(s).replace(/[^A-Z0-9가-힣]/g,'');
+const _digits = s => _noPar(s).replace(/\D/g,'');
+function _segs(s){
+  return _noPar(s).replace(/[^A-Z0-9가-힣]+/g,'-').split('-').filter(Boolean)
+         .map(x=>/^\d+$/.test(x) ? String(parseInt(x,10)) : x);
+}
+function keyEq(a,b){
+  if(!a||!b) return 0;
+  if(_up(a)===_up(b))       return 5;
+  if(_alnum(a)===_alnum(b)) return 4;
+  const A=_segs(a), B=_segs(b);
+  if(A.length && A.join('-')===B.join('-')) return 3;
+  const S = A.length<=B.length?A:B, L = A.length<=B.length?B:A;
+  if(S.length>=2 && S.every((x,i)=>x===L[i])) return 2;
+  const da=_digits(a), db=_digits(b);
+  if(da.length>=4 && da===db) return 1;
+  return 0;
+}
+function bestMatch(list, val, fields){
+  let best=0, hits=[];
+  for(const it of (list||[])){
+    let sc=0; for(const f of fields){ const v=keyEq(it[f], val); if(v>sc) sc=v; }
+    if(!sc) continue;
+    if(sc>best){ best=sc; hits=[it]; }
+    else if(sc===best) hits.push(it);
+  }
+  return {score:best, hits};
+}
+/* 단일 후보만 채택 */
+function pickOne(list, val, fields){
+  const r=bestMatch(list, val, fields);
+  return (r.score && r.hits.length===1) ? r.hits[0] : null;
+}
+
+
 /* ── 식별자 → MOLDS(품번) 매칭 ── */
 async function qrFind(v){
   const n=qrN(v); if(!n) return [];
+  // 1단계 — 정기점검 대장에서 품번·금형번호 직접 비교
   let hit=MOLDS.filter(m=>qrN(m.품번)===n||qrN(m.금형번호)===n);
   if(hit.length) return hit;
-  // 금형관리대장(mold_master)에서 재번 → 품번 역추적
+  // 2단계 — 표기 차이(괄호 부기·공백·앞자리 0) 흡수 매칭
+  const r1=bestMatch(MOLDS, v, ['품번','금형번호']);
+  if(r1.score>=2 && r1.hits.length===1) return r1.hits;
+  // 3단계 — 금형관리대장(mold_master)에서 재번 → 품번 역추적 후 완화 매칭
   if(typeof sb!=='undefined'&&sb){
     try{
       const {data}=await sb.from('mold_master').select('pn,mn').limit(3000);
-      const mm=(data||[]).filter(r=>qrN(r.mn)===n||qrN(r.pn)===n);
-      const pns=new Set(mm.map(r=>r.pn));
-      hit=MOLDS.filter(m=>pns.has(m.품번));
-      if(hit.length) return hit;
+      const all=data||[];
+      let mm=all.filter(x=>qrN(x.mn)===n||qrN(x.pn)===n);
+      if(!mm.length){ const one=pickOne(all, v, ['mn','pn']); if(one) mm=[one]; }
+      const out=[];
+      mm.forEach(x=>{
+        const e = MOLDS.find(m=>m.품번===x.pn) || pickOne(MOLDS, x.pn, ['품번']);
+        if(e && !out.includes(e)) out.push(e);
+      });
+      if(out.length) return out;
     }catch(e){}
   }
+  // 4단계 — 숫자 코어까지 완화 (후보가 하나일 때만)
+  if(r1.score===1 && r1.hits.length===1) return r1.hits;
   return MOLDS.filter(m=>qrN(m.품번).includes(n)||qrN(m.금형번호).includes(n)).slice(0,20);
 }
 
