@@ -10034,13 +10034,14 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       <div class="grid2">
         <div class="fld"><label>토픽명</label>
           <input type="text" id="nt-topic" placeholder="taejin_mold_alert"></div>
-        <div class="fld"><label>재알림 주기 <span style="font-weight:400">(같은 문제 반복 알림 간격)</span></label>
-          <select id="nt-period">
-            <option value="360">6시간마다</option>
-            <option value="720">12시간마다</option>
-            <option value="1440" selected="">24시간마다</option>
-            <option value="4320">3일마다</option>
-            <option value="10080">7일마다</option>
+        <div class="fld"><label>발송 시각 <span style="font-weight:400">(한국시간 · 하루 1회)</span></label>
+          <select id="nt-hour">
+            <option value="7">매일 07시</option>
+            <option value="8" selected="">매일 08시</option>
+            <option value="9">매일 09시</option>
+            <option value="10">매일 10시</option>
+            <option value="13">매일 13시</option>
+            <option value="17">매일 17시</option>
           </select></div>
       </div>
       <div class="card" style="background:#F6F7F8;margin:12px 0">
@@ -10073,8 +10074,8 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       </div>
       <p class="note" style="margin-top:10px">
         휴대폰 <b>ntfy</b> 앱에서 위 토픽을 구독하면, 정기점검 주기를 넘겼거나 정기세척 도래·임박 금형이 생겼을 때 알림이 옵니다.
-        같은 문제는 위에서 정한 주기마다 1회 재알림되며, 문제가 해소되면 <b>정상 복구 알림</b>이 한 번 갑니다.
-        <b>이 대시보드가 켜져 있는 동안 30분 간격으로 감시·발송</b>하며, 브라우저를 닫으면 발송되지 않습니다.
+        알림은 <b>한국시간 기준 하루 1회</b>, 정한 시각이 지나면 모든 항목을 <b>한 건으로 묶어</b> 보냅니다 (해소된 항목도 함께 표시, 이상 없으면 발송 안 함).
+        여러 기기에서 앱을 열어 두어도 서버에 발송일을 기록해 <b>하루 한 번만</b> 갑니다. 앱이 켜진 기기가 하나도 없으면 발송되지 않습니다.
         토픽명은 아무나 구독할 수 있으니 <b>추측하기 어려운 이름</b>을 쓰세요 (예: <code>taejin_mold_a7k2</code>).
       </p>
     </div>
@@ -11178,15 +11179,18 @@ async function gbRun(){
 }
 
 /* ==================== ntfy 경고 알림 ==================== */
-let NTFY={on:false,topic:'',period:1440,
-  items:{over:true,soon:true,wover:true,wsoon:true,nobase:false,miss:false},
-  sent:{}};                                   // {키:마지막 발송 시각(ms)}
+let NTFY={on:false,topic:'',hour:8,day:'',prev:[],
+  items:{over:true,soon:true,wover:true,wsoon:true,nobase:false,miss:false}};
+/* 한국시간(UTC+9) — 기기 시간대와 무관 */
+function kstNow(){const d=new Date(Date.now()+9*3600e3);
+  return {day:d.toISOString().slice(0,10),hour:d.getUTCHours(),
+    md:(d.getUTCMonth()+1)+'/'+d.getUTCDate(),hm:d.toISOString().slice(11,16)}}
 let ntTimer=null;
 
 function ntUI(){
   $('#nt-on').checked=!!NTFY.on;
   $('#nt-topic').value=NTFY.topic||'';
-  $('#nt-period').value=String(NTFY.period||1440);
+  $('#nt-hour').value=String(NTFY.hour??8);
   Object.keys(NTFY.items).forEach(k=>{const el=$('#nt-'+k); if(el)el.checked=!!NTFY.items[k]});
   const ok=NTFY.on&&NTFY.topic;
   const b=$('#nt-badge');
@@ -11196,7 +11200,7 @@ function ntUI(){
 function ntRead(){
   NTFY.on=$('#nt-on').checked;
   NTFY.topic=$('#nt-topic').value.trim();
-  NTFY.period=+$('#nt-period').value||1440;
+  NTFY.hour=+$('#nt-hour').value; if(isNaN(NTFY.hour))NTFY.hour=8;
   Object.keys(NTFY.items).forEach(k=>{const el=$('#nt-'+k); if(el)NTFY.items[k]=el.checked});
 }
 async function ntSend(title,msg,tags,pri){
@@ -11251,38 +11255,45 @@ function ntCollect(){
 async function ntCheck(manual){
   if(!manual&&(!NTFY.on||!NTFY.topic))return;
   if(manual&&!NTFY.topic){toast('토픽명을 입력하세요');$('#nt-topic').focus();return}
-  const list=ntCollect(), now=Date.now(), gap=(NTFY.period||1440)*60000;
-  const active={}; let sent=0, back=0;
-  for(const a of list){
-    active[a.k]=1;
-    const key=a.k+'|'+a.n;
-    const last=NTFY.sent[a.k];
-    if(!manual&&last&&last.key===key&&now-last.at<gap)continue;
-    const body=a.head+'\n\n'+a.list.slice(0,12).join('\n')+
-      (a.list.length>12?`\n… 외 ${a.list.length-12}품번`:'')+
-      `\n\n확인 : 금형 정기점검·세척점검 관리 (${today()})`;
-    try{ await ntSend(`[태진다이텍] ${a.t} ${a.n}품번`,body,a.tags,a.pri);
-      NTFY.sent[a.k]={key,at:now}; sent++;
-    }catch(e){ $('#nt-st').textContent='발송 실패: '+e.message; toast('ntfy 발송 실패'); return }
+  const k=kstNow();
+  if(!manual){
+    if(k.hour<(NTFY.hour??8)||NTFY.day===k.day)return;          // 발송 시각 전 · 오늘 이미 발송
+    if(sb){                                                     // 다른 기기가 오늘 이미 보냈는지 서버 확인
+      try{const {data}=await sb.from('kv_store').select('n:value->ntfy').eq('key','mold_periodic_v1').single();
+        const sv=data&&data.n;
+        if(sv&&sv.day===k.day){NTFY.day=sv.day;NTFY.prev=sv.prev||[];
+          $('#nt-st').textContent=`오늘(${k.md}) 알림은 이미 발송됨 · 다음 발송 내일 ${String(NTFY.hour).padStart(2,'0')}시`;return}
+      }catch(e){return}                                          // 확인 실패 시 중복 방지 위해 보류
+    }
   }
-  // 정상 복구 알림
-  for(const k of Object.keys(NTFY.sent)){
-    if(active[k]||!NTFY.sent[k])continue;
-    const t={over:'정기점검 주기 초과',soon:'정기점검 임박',wover:'정기세척 도래',
-             wsoon:'정기세척 임박',nobase:'세척 기준점 미설정',miss:'금형 마스터 미등록'}[k]||k;
-    try{ await ntSend(`[태진다이텍] ${t} 해소`,`${t} 상태가 모두 해소되었습니다. (${today()})`,['white_check_mark'],3);
-      delete NTFY.sent[k]; back++;
-    }catch(e){}
+  const list=ntCollect();
+  const nm={over:'정기점검 주기 초과',soon:'정기점검 임박',wover:'정기세척 도래',
+           wsoon:'정기세척 임박',nobase:'세척 기준점 미설정',miss:'금형 마스터 미등록'};
+  const now=list.map(a=>a.k);
+  const back=(NTFY.prev||[]).filter(x=>now.indexOf(x)<0);
+  if(!manual){NTFY.day=k.day; NTFY.prev=now; if(sb)await push()}   // 발송 전에 서버에 선점 기록
+  let msg;
+  if(!list.length&&!back.length){
+    msg=`최근 점검 ${k.md} ${k.hm} · 이상 없음 (발송 안 함)`;
+  }else{
+    const body=list.map(a=>`■ ${a.t} ${a.n}품번\n`+a.list.slice(0,8).join('\n')+
+        (a.list.length>8?`\n… 외 ${a.list.length-8}품번`:'')).join('\n\n')+
+      (back.length?(list.length?'\n\n':'')+'✅ 해소 : '+back.map(x=>nm[x]||x).join(', '):'')+
+      `\n\n확인 : 금형 정기점검·세척점검 관리 (${k.day})`;
+    const title=`[태진다이텍] 금형 일일 알림 ${k.md}`+(list.length?' · '+list.map(a=>a.t.replace('금형 ','')+' '+a.n).join(' / '):' · 해소');
+    const pri=list.reduce((m,a)=>Math.max(m,a.pri),3);
+    const tags=list.some(a=>a.pri>=5)?['rotating_light']:(list.length?['bell']:['white_check_mark']);
+    try{ await ntSend(title,body,tags,pri) }
+    catch(e){ if(!manual){NTFY.day='';if(sb)pushSoon()} $('#nt-st').textContent='발송 실패: '+e.message; toast('ntfy 발송 실패'); return }
+    msg=`${manual?'수동':'일일'} 발송 ${k.md} ${k.hm} · ${list.length}개 항목`+(back.length?` · 해소 ${back.length}`:'');
   }
-  const msg=`최근 점검 ${new Date().toLocaleTimeString('ko-KR')} · 알림 ${sent}건`+
-    (back?` · 복구 ${back}건`:'')+(list.length?'':' · 이상 없음');
-  $('#nt-st').textContent=msg;
-  if(manual)toast(sent||back?`알림 ${sent+back}건을 발송했습니다`:'발송할 알림이 없습니다 (이상 없음)');
+  $('#nt-st').textContent=msg+(manual?'':` · 다음 발송 내일 ${String(NTFY.hour).padStart(2,'0')}시`);
+  if(manual)toast(list.length||back.length?'알림을 발송했습니다':'발송할 알림이 없습니다 (이상 없음)');
   if(sb)pushSoon();
 }
 function ntStart(){
   clearInterval(ntTimer);
-  if(NTFY.on&&NTFY.topic){ ntTimer=setInterval(()=>ntCheck(false),30*60000); setTimeout(()=>ntCheck(false),4000) }
+  if(NTFY.on&&NTFY.topic){ ntTimer=setInterval(()=>ntCheck(false),10*60000); setTimeout(()=>ntCheck(false),4000) }
 }
 
 /* ============ 타발수 기준 등급 자동 산정 ============ */
@@ -11517,7 +11528,7 @@ function loadPayload(v){
   if(v.meta){SMETA=Object.assign(SMETA,v.meta);fillShotSelects()}
   if(v.insp)INSP=Object.assign(INSP,v.insp);
   if(v.user)me=v.user;
-  if(v.ntfy){NTFY=Object.assign(NTFY,v.ntfy);NTFY.items=Object.assign({over:true,soon:true,wover:true,wsoon:true,nobase:false,miss:false},v.ntfy.items||{});NTFY.sent=v.ntfy.sent||{};ntUI();ntStart()}
+  if(v.ntfy){NTFY=Object.assign(NTFY,v.ntfy);NTFY.items=Object.assign({over:true,soon:true,wover:true,wsoon:true,nobase:false,miss:false},v.ntfy.items||{});delete NTFY.sent;delete NTFY.period;if(NTFY.hour==null)NTFY.hour=8;ntUI();ntStart()}
 }
 let lastSync=null, dataSrc='로컬 초기 데이터', me='';
 function relTime(t){
@@ -11749,7 +11760,7 @@ $('#nt-save').onclick=async()=>{
   ntRead();
   if(NTFY.on&&!NTFY.topic){toast('토픽명을 입력하세요');$('#nt-topic').focus();return}
   ntUI(); ntStart();
-  $('#nt-st').textContent=NTFY.on?`감시 시작 · 토픽 ${NTFY.topic} · ${NTFY.period/60}시간마다 재알림`:'알림을 사용하지 않습니다.';
+  $('#nt-st').textContent=NTFY.on?`감시 시작 · 토픽 ${NTFY.topic} · 매일 ${String(NTFY.hour).padStart(2,'0')}시(한국시간) 1회`:'알림을 사용하지 않습니다.';
   toast('알림 설정을 저장했습니다');
   if(sb)await push();
 };
