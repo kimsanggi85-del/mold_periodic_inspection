@@ -2,7 +2,30 @@
 <!-- saved from url=(0059)https://kimsanggi85-del.github.io/mold_periodic_inspection/ -->
 <html lang="ko"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" id="vp" content="width=device-width,initial-scale=1">
+<script>
+/* 화면 모드 : pc / m(모바일) — ?view=pc|m 로 지정, 미지정 시 저장값 → 기기 자동판별 */
+(function(){
+  var q=(new URLSearchParams(location.search).get('view')||'').toLowerCase();
+  var v=q==='m'||q==='mobile'?'m':q==='pc'?'pc':q==='auto'?'auto':'';
+  try{ if(v==='auto'){localStorage.removeItem('mpi_view');v='';}
+       else if(v){localStorage.setItem('mpi_view',v);}
+       else{v=localStorage.getItem('mpi_view')||'';} }catch(e){}
+  window.VIEW_PREF=v||'auto';
+  if(v!=='m'&&v!=='pc'){
+    var touch=window.matchMedia&&matchMedia('(pointer:coarse)').matches;
+    var small=Math.min(screen.width,screen.height)<=820;
+    v=(touch&&small)||window.innerWidth<=760?'m':'pc';
+  }
+  window.applyView=function(m){
+    document.documentElement.setAttribute('data-view',m);
+    var vp=document.getElementById('vp');
+    if(vp)vp.setAttribute('content',m==='pc'&&window.matchMedia&&matchMedia('(pointer:coarse)').matches
+      ?'width=1280':'width=device-width,initial-scale=1,viewport-fit=cover');
+  };
+  applyView(v);
+})();
+</script>
 <title>금형 정기점검 · 세척점검 관리</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -44,7 +67,6 @@ header{background:var(--ink);color:#fff;padding:18px 0 0}
 .dot.d-bad{background:#F08A82;box-shadow:0 0 7px rgba(240,138,130,.7)}
 #sy-user{cursor:pointer}
 #sy-user:hover{text-decoration:underline}
-@media(max-width:860px){.sysbar{grid-template-columns:repeat(2,1fr)}}
 
 /* tabs */
 nav{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
@@ -180,7 +202,6 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
 .ms.now{border-color:var(--ok);border-width:2px}
 .lgd{display:flex;gap:14px;font-size:12px;color:var(--muted);margin:10px 0 0;flex-wrap:wrap}
 .lgd i{display:inline-block;width:15px;height:15px;border-radius:4px;vertical-align:-3px;margin-right:4px}
-@media(max-width:860px){.msum{grid-template-columns:repeat(6,1fr)}}
 /* 타발수 관리 */
 .sh{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
 .sh th,.sh td{border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap}
@@ -234,14 +255,6 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
 .gtot span{font-size:11px;color:#9AA3AD;display:block}
 .gtot .warn{color:#F08A82;font-size:12px;font-weight:700}
 .gw{background:var(--warn-bg);color:var(--warn);padding:2px 7px;border-radius:5px;font-size:11px;font-weight:800}
-@media(max-width:860px){.gopt{flex-wrap:wrap}}
-@media(max-width:860px){.ssum{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:860px){
-  .stats{grid-template-columns:repeat(3,1fr)}
-  .row{grid-template-columns:1fr;gap:9px}
-  .grid2{grid-template-columns:1fr}
-  .dd{text-align:left}
-}
 @media(prefers-reduced-motion:no-preference){.row{transition:border-color .12s}}
 
 /* ===== 금형 세척점검 ===== */
@@ -265,15 +278,171 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
   display:grid;grid-template-columns:1fr 260px 118px;gap:16px;align-items:center;border-left:4px solid var(--line)}
 .wrow.s-bad{border-left-color:var(--bad)}.wrow.s-warn{border-left-color:var(--warn)}
 .wrow.s-ok{border-left-color:var(--ok)}
-@media(max-width:860px){.steps{grid-template-columns:repeat(2,1fr)}.step::after{display:none}
-  .grid3{grid-template-columns:1fr}
-  .wrow{grid-template-columns:1fr;gap:9px}}
+/* =====================================================================
+   화면 모드 — html[data-view="pc"] PC 버전 / html[data-view="m"] 모바일 버전
+   PC·모바일 스타일은 아래 각 블록에서 따로 수정하세요.
+   ===================================================================== */
+.hd-top{display:flex;align-items:center;gap:12px}
+.hd-top h1{flex:1;min-width:0}
+.vbtn{background:#2A2F36;color:#fff;border:1px solid #3A414A;border-radius:7px;padding:6px 11px;
+  font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex:none}
+.vbtn:hover{background:#353B44}
+.vbtn:focus-visible{outline:2px solid #5FC0AB;outline-offset:2px}
+html:not([data-view=m]) .m-only{display:none!important}
+html[data-view=m] .pc-only{display:none!important}
+
+/* ---------------------------------------------------------------------
+   [PC 버전] 넓은 화면 · 마우스 · 키보드 기준
+   --------------------------------------------------------------------- */
+html[data-view=pc] body{min-width:1180px}
+html[data-view=pc] .wrap,html[data-view=pc] .hd,html[data-view=pc] .tabs{max-width:1800px}
+html[data-view=pc] .stats{grid-template-columns:repeat(5,1fr)}
+html[data-view=pc] .sysbar{grid-template-columns:repeat(4,1fr)}
+html[data-view=pc] .row,html[data-view=pc] .wrow{grid-template-columns:1fr 320px 130px}
+html[data-view=pc] .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(760px,1fr));gap:8px 10px}
+html[data-view=pc] .tab{padding:13px 18px}
+html[data-view=pc] .gauge{height:30px}
+html[data-view=pc] .gauge .track{top:16px}
+html[data-view=pc] .tab .kb{font-family:var(--mono);font-size:10px;color:#AEB4BB;margin-left:5px;font-weight:600}
+html[data-view=pc] #mask .modal{max-width:1080px}
+html[data-view=pc] #gmask .modal{max-width:1040px}
+html[data-view=pc] #mmask .modal{max-width:1100px}
+html[data-view=pc] .sh tbody tr:hover td{background:#F1F5F4}
+html[data-view=pc] .mx tbody tr:hover td{background:#F8F9FA}
+html[data-view=pc] .kbhint{font-size:11.5px;color:#9AA3AD}
+
+/* ---------------------------------------------------------------------
+   [모바일 버전] 휴대폰 · 터치 · 현장 QR 점검 기준
+   --------------------------------------------------------------------- */
+html[data-view=m] body{font-size:15px;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+html[data-view=m] .kbhint,html[data-view=m] .tab .kb{display:none}
+/* 입력창 16px 이상 → iOS 자동 확대 방지, 터치 영역 확대 */
+html[data-view=m] input[type=search],html[data-view=m] input[type=text],html[data-view=m] input[type=date],
+html[data-view=m] input[type=number],html[data-view=m] select,html[data-view=m] textarea{font-size:16px;padding:10px 11px}
+html[data-view=m] input[type=search]{min-width:0}
+html[data-view=m] .btn{padding:11px 14px;min-height:44px}
+html[data-view=m] .chip{padding:9px 14px;font-size:13.5px}
+
+/* 헤더 */
+html[data-view=m] header{padding:12px 0 0}
+html[data-view=m] .hd{padding:0 12px}
+html[data-view=m] .hd h1{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html[data-view=m] .hd .sub{display:none}
+html[data-view=m] .stats{grid-template-columns:repeat(5,1fr);margin-top:10px}
+html[data-view=m] .st{padding:8px 4px;text-align:center;min-width:0}
+html[data-view=m] .st b{font-size:17px}
+html[data-view=m] .st span{font-size:10px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html[data-view=m] .sysbar{grid-template-columns:repeat(3,1fr)}
+html[data-view=m] .sy{padding:7px 9px}
+html[data-view=m] .sy b{font-size:12px}
+html[data-view=m] .sy:last-child{display:none}
+
+/* QR 스캔 → 화면 하단 고정 버튼 */
+html[data-view=m] .qrbar{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:45;margin:0}
+html[data-view=m] .qrbar .btn{border-radius:999px;padding:15px 22px;font-size:16px;background:var(--ok);border-color:var(--ok);
+  box-shadow:0 8px 22px rgba(0,0,0,.32)}
+html[data-view=m] .qrnote{display:none}
+html[data-view=m] .toast{bottom:calc(90px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);text-align:center}
+
+/* 탭 */
+html[data-view=m] .tabs{padding:0 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+html[data-view=m] .tabs::-webkit-scrollbar{display:none}
+html[data-view=m] .tab{padding:13px 12px;font-size:14.5px}
+
+/* 본문 · 도구줄 */
+html[data-view=m] .wrap{padding:0 10px 24px}
+html[data-view=m] .bar{gap:6px;margin:12px 0 10px}
+html[data-view=m] .bar .spacer,html[data-view=m] .bar .sep{display:none}
+html[data-view=m] .bar>select,html[data-view=m] .bar>input[type=search]{flex:1 1 140px;min-width:0}
+html[data-view=m] .bar>.btn{flex:1 1 auto}
+html[data-view=m] .bar:not(.adm-on) .adm{display:none!important}
+html[data-view=m] .admtg[aria-expanded=true]{background:var(--ink);color:#fff}
+html[data-view=m] .card{padding:12px;border-radius:9px}
+html[data-view=m] .grid2,html[data-view=m] .grid3{grid-template-columns:1fr;gap:10px}
+html[data-view=m] .ssum{grid-template-columns:repeat(2,1fr)}
+html[data-view=m] .msum{grid-template-columns:repeat(6,1fr)}
+
+/* 점검 대상 · 세척 현황 카드 : 품번 | D-day / 게이지 */
+html[data-view=m] .row,html[data-view=m] .wrow{grid-template-columns:1fr auto;grid-template-areas:"a c" "b b";
+  gap:8px 10px;padding:12px}
+html[data-view=m] .row>div:first-child,html[data-view=m] .wrow>div:first-child{grid-area:a;min-width:0}
+html[data-view=m] .row .gauge,html[data-view=m] .wrow .gauge{grid-area:b;height:30px}
+html[data-view=m] .gauge .track{top:16px}
+html[data-view=m] .row .dd,html[data-view=m] .wrow .dd{grid-area:c;text-align:right;align-self:start}
+html[data-view=m] .wrow .dd span{display:block;max-width:96px;line-height:1.3}
+html[data-view=m] .pn{font-size:15.5px}
+html[data-view=m] .badge{margin-left:5px}
+
+/* 표 : 좌우 스크롤, 고정열은 품번만 */
+html[data-view=m] .card[style*="overflow"]{max-height:70vh!important;-webkit-overflow-scrolling:touch}
+html[data-view=m] .sh .c0,html[data-view=m] .sh .c2,html[data-view=m] .sh .c3{display:none}
+html[data-view=m] .sh .c1{left:0;min-width:110px;max-width:110px;box-shadow:1px 0 0 var(--line)}
+html[data-view=m] .sh .c4{position:static;box-shadow:none}
+html[data-view=m] .sh .r0,html[data-view=m] .sh .r1{position:static;box-shadow:none}
+html[data-view=m] .sh input.cel{font-size:13px;width:88px;padding:6px 4px}
+html[data-view=m] .mx,html[data-view=m] .sh{width:max-content;min-width:100%}
+html[data-view=m] .mx .k0,html[data-view=m] .mx .k2{display:none}
+html[data-view=m] .mx .k1{left:0;min-width:104px;box-shadow:1px 0 0 var(--line)}
+html[data-view=m] .mx .k3{position:static;box-shadow:none;font-size:11px}
+html[data-view=m] .cell{width:34px;height:32px}
+
+/* 세척 6단계 */
+html[data-view=m] .steps{grid-template-columns:repeat(3,1fr);gap:6px}
+html[data-view=m] .step{padding:10px 4px}
+html[data-view=m] .step::after{display:none}
+
+/* 모달 → 전체 화면 */
+html[data-view=m] .mask{padding:0}
+html[data-view=m] .modal{max-width:none!important;min-height:100%;border-radius:0}
+html[data-view=m] .mhd{padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top))}
+html[data-view=m] .mhd h2{font-size:15px;line-height:1.35;min-width:0}
+html[data-view=m] .mhd .badge{white-space:nowrap;flex:none}
+html[data-view=m] .mhd .x{font-size:28px;padding:0 4px}
+html[data-view=m] .mbd{padding:12px 10px}
+html[data-view=m] .mft{flex-wrap:wrap;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+html[data-view=m] .mft .btn{flex:1 1 40%}
+html[data-view=m] .mft .spacer{display:none}
+html[data-view=m] .mft .note{order:-1;flex-basis:100%}
+html[data-view=m] .gtot{gap:12px;padding:11px 13px}
+html[data-view=m] .gtot b{font-size:19px}
+
+/* 정기점검 항목표 → 항목 카드 (번호·부위 / 기준 / 양호·불량·N/A) */
+html[data-view=m] #itbl,html[data-view=m] #itbl tbody{display:block}
+html[data-view=m] #itbl tr{display:grid;grid-template-columns:30px 1fr;gap:4px 8px;padding:10px 2px;border-bottom:1px solid var(--line)}
+html[data-view=m] #itbl td{display:block;width:auto!important;border:0;padding:0}
+html[data-view=m] #itbl td.sec{grid-column:1/-1;padding:7px 9px;border-radius:6px}
+html[data-view=m] #itbl tr:has(td.sec){padding:8px 0 2px;border:0}
+html[data-view=m] #itbl td:nth-child(3),html[data-view=m] #itbl td:nth-child(4){grid-column:2}
+html[data-view=m] #itbl td:nth-child(3){font-size:13.5px}
+html[data-view=m] .jud{gap:6px;margin-top:4px}
+html[data-view=m] .jud button{flex:1;padding:11px 6px;font-size:14px}
+
+/* 등급 평가 항목표 → 세로 배치 */
+html[data-view=m] #gitbl,html[data-view=m] #gitbl tbody{display:block}
+html[data-view=m] #gitbl tr{display:block;padding:10px 0;border-bottom:1px solid var(--line)}
+html[data-view=m] #gitbl td{display:block;width:auto!important;border:0;padding:0 0 6px}
+html[data-view=m] #gitbl td.sec{padding:7px 9px;border-radius:6px}
+html[data-view=m] .gopt{flex-wrap:wrap;gap:5px}
+html[data-view=m] .gopt button{min-width:0;flex:1 1 30%;padding:8px 4px;font-size:12px}
+
+/* QR 스캔 창 → 전체 화면 */
+html[data-view=m] #qrMask.on{padding:0}
+html[data-view=m] .qrbox{max-width:none;height:100%;max-height:none;border-radius:0}
+html[data-view=m] .qrhd{padding-top:calc(13px + env(safe-area-inset-top))}
+html[data-view=m] .qrvid{aspect-ratio:auto;flex:1 1 auto;min-height:44vh}
+html[data-view=m] .qrbody{max-height:30vh}
+html[data-view=m] .qrfoot{padding-bottom:calc(11px + env(safe-area-inset-bottom))}
+html[data-view=m] .qrfoot input{font-size:16px}
 </style>
 </head>
 <body>
 <header>
   <div class="hd">
-    <h1>금형 정기점검 · 세척점검 관리</h1>
+    <div class="hd-top">
+      <h1>금형 정기점검 · 세척점검 관리</h1>
+      <span class="kbhint pc-only">Alt+1~7 탭 이동 · / 검색 · Esc 닫기</span>
+      <button class="vbtn" id="viewBtn" type="button" title="PC 화면 / 모바일 화면 전환">📱 모바일 화면</button>
+    </div>
     <div class="sub">TJP-EU0702-01 · 등급별 점검주기 A 1회/년 · B 1회/6개월 · C 1회/3개월 · F 사용시 · 세척점검 : 일상세척(생산완료 후) / 정기세척(양산 100만타 · A/S 50만타 또는 1년)</div>
     <div class="stats">
       <div class="st"><b id="s-total">126</b><span id="s-scope">점검 대상</span></div>
@@ -2937,24 +3106,25 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       <select id="smode"><option value="cum">누적 타발수</option><option value="inc">월 발생 타수</option></select>
       <input type="search" id="sq" placeholder="품번 · 모델 검색">
       <span class="sep"></span>
-      <select id="sd-m" title="삭제할 월"><option value="all">연도 전체 삭제</option><option value="0">1월 삭제</option><option value="1">2월 삭제</option><option value="2">3월 삭제</option><option value="3">4월 삭제</option><option value="4">5월 삭제</option><option value="5">6월 삭제</option><option value="6">7월 삭제</option><option value="7">8월 삭제</option><option value="8">9월 삭제</option><option value="9">10월 삭제</option><option value="10">11월 삭제</option><option value="11">12월 삭제</option></select>
-      <button class="btn ghost" id="btn-sdel" title="위에서 선택한 연도·고객사 기준으로 해당 월(또는 연도 전체)의 타발수를 지웁니다">타발수 삭제</button>
-      <button class="btn ghost" id="btn-srst" title="대장 원본(2025·2026년)으로 전부 되돌립니다">초기 복원</button>
+      <button class="btn ghost m-only admtg" type="button" aria-expanded="false">⚙ 관리 도구</button>
+      <select id="sd-m" class="adm" title="삭제할 월"><option value="all">연도 전체 삭제</option><option value="0">1월 삭제</option><option value="1">2월 삭제</option><option value="2">3월 삭제</option><option value="3">4월 삭제</option><option value="4">5월 삭제</option><option value="5">6월 삭제</option><option value="6">7월 삭제</option><option value="7">8월 삭제</option><option value="8">9월 삭제</option><option value="9">10월 삭제</option><option value="10">11월 삭제</option><option value="11">12월 삭제</option></select>
+      <button class="btn ghost adm" id="btn-sdel" title="위에서 선택한 연도·고객사 기준으로 해당 월(또는 연도 전체)의 타발수를 지웁니다">타발수 삭제</button>
+      <button class="btn ghost adm" id="btn-srst" title="대장 원본(2025·2026년)으로 전부 되돌립니다">초기 복원</button>
       <span class="sep"></span>
-      <select id="agrd-mode" title="등급 산정 방식">
+      <select id="agrd-mode" class="adm" title="등급 산정 방식">
         <option value="full">평가표 13항목 (규정 기준)</option>
         <option value="band">타발수 구간 직접 (간이)</option>
       </select>
-      <select id="agrd-base" title="타발수 기준">
+      <select id="agrd-base" class="adm" title="타발수 기준">
         <option value="cum">누적 타발수</option>
         <option value="ann">연간 타발수</option>
       </select>
-      <button class="btn ghost" id="btn-agrd" title="타발수와 금형 제작년도를 읽어 등급을 다시 계산하고 금형 등급·점검주기에 반영합니다">등급 자동 산정</button>
-      <label class="note" style="display:flex;align-items:center;gap:5px;cursor:pointer" title="타발수를 입력·붙여넣기·삭제할 때마다 등급을 자동으로 다시 계산합니다">
+      <button class="btn ghost adm" id="btn-agrd" title="타발수와 금형 제작년도를 읽어 등급을 다시 계산하고 금형 등급·점검주기에 반영합니다">등급 자동 산정</button>
+      <label class="note adm" style="display:flex;align-items:center;gap:5px;cursor:pointer" title="타발수를 입력·붙여넣기·삭제할 때마다 등급을 자동으로 다시 계산합니다">
         <input type="checkbox" id="agrd-on" checked="" style="width:15px;height:15px;min-width:0">타발수 변경 시 자동</label>
       <div class="spacer"></div>
       <button class="btn" id="btn-paste">MES 타발수 붙여넣기</button>
-      <button class="btn ghost" id="btn-scsv">타발수 내보내기</button>
+      <button class="btn ghost adm" id="btn-scsv">타발수 내보내기</button>
     </div>
     <div class="ssum" id="ssum"><div class="ms"><b style="font-size:16px">137건</b><span>등록 금형</span></div><div class="ms"><b style="font-size:16px">1,958만타</b><span>2026년 타발수</span></div><div class="ms"><b style="font-size:16px">0건</b><span>4~5점 (연 300만타 이상)</span></div><div class="ms"><b style="font-size:16px">2건</b><span>당해 미입력</span></div></div>
     <div class="card" style="padding:0;overflow:auto;max-height:66vh">
@@ -5928,10 +6098,11 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
       <select id="pg"><option value="B등급">B등급 (1회/6개월)</option><option value="A등급">A등급 (1회/년)</option><option value="C등급">C등급 (1회/3개월)</option></select>
       <input type="search" id="pq" placeholder="품번 검색">
       <div class="spacer"></div>
-      <button class="btn ghost" id="btn-auto">주기 기준 자동 배정</button>
-      <button class="btn ghost" id="btn-pcsv">계획표 내보내기</button>
-      <button class="btn ghost" id="btn-planp">📄 연간 계획표 인쇄</button>
-      <button class="btn" id="btn-planx">⬇ 연간 계획표 Excel</button>
+      <button class="btn ghost m-only admtg" type="button" aria-expanded="false">⚙ 계획 도구</button>
+      <button class="btn ghost adm" id="btn-auto">주기 기준 자동 배정</button>
+      <button class="btn ghost adm" id="btn-pcsv">계획표 내보내기</button>
+      <button class="btn ghost adm" id="btn-planp">📄 연간 계획표 인쇄</button>
+      <button class="btn adm" id="btn-planx">⬇ 연간 계획표 Excel</button>
     </div>
     <div class="msum" id="msum"><div class="ms">
     <b>22/22</b><span>1월</span></div><div class="ms">
@@ -10004,6 +10175,18 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
   <!-- 설정 -->
   <section id="p-set" hidden="">
     <div class="card">
+      <h3>화면 모드</h3>
+      <div class="bar" style="margin:0 0 10px">
+        <button class="chip" type="button" data-vm="auto" aria-pressed="false">자동 (기기 판별)</button>
+        <button class="chip" type="button" data-vm="pc" aria-pressed="false">🖥 PC 버전</button>
+        <button class="chip" type="button" data-vm="m" aria-pressed="false">📱 모바일 버전</button>
+        <span class="note" id="vm-st"></span>
+      </div>
+      <p class="note">이 기기에서 쓸 화면을 고릅니다 (기기별로 저장). 주소 뒤에 <code>?view=pc</code> · <code>?view=m</code>를 붙이거나
+        <code>pc.html</code> · <code>mobile.html</code>로 열면 해당 버전으로 바로 열립니다.
+        모바일 버전은 큰 터치 버튼 · 전체화면 입력창 · 하단 QR 스캔 버튼으로, PC 버전은 넓은 표 · 키보드 단축키로 구성됩니다.</p>
+    </div>
+    <div class="card">
       <h3>Supabase 연결</h3>
       <div class="bar" style="margin:0 0 12px">
         <span class="pill p-ok" id="conn-badge">연결됨</span>
@@ -12950,5 +13133,67 @@ ${Array.from({length:12},(_,i)=>`<th>${i+1}월</th>`).join('')}<th>계획</th><t
 $('#btn-planx').onclick = exportPlanXlsx;
 $('#btn-planp').onclick = printPlan;
 
+</script>
+<!-- 화면 모드 (PC / 모바일) -->
+<script>
+(function(){
+  const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+  const cur=()=>document.documentElement.getAttribute('data-view');
+  function sync(){
+    const m=cur()==='m';
+    $('#viewBtn').textContent=m?'🖥 PC 화면':'📱 모바일 화면';
+    $$('.chip[data-vm]').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.vm===window.VIEW_PREF)));
+    const st=$('#vm-st');
+    if(st)st.textContent='현재 : '+(m?'모바일 버전':'PC 버전')+(window.VIEW_PREF==='auto'?' (자동 판별)':'');
+  }
+  function setView(pref){
+    window.VIEW_PREF=pref;
+    try{ pref==='auto'?localStorage.removeItem('mpi_view'):localStorage.setItem('mpi_view',pref); }catch(e){}
+    let v=pref;
+    if(v==='auto'){
+      const touch=matchMedia('(pointer:coarse)').matches, small=Math.min(screen.width,screen.height)<=820;
+      v=(touch&&small)||innerWidth<=760?'m':'pc';
+    }
+    applyView(v); sync();
+    if(typeof toast==='function')toast(v==='m'?'모바일 버전으로 전환했습니다':'PC 버전으로 전환했습니다');
+  }
+  $('#viewBtn').onclick=()=>setView(cur()==='m'?'pc':'m');
+  $$('.chip[data-vm]').forEach(c=>c.onclick=()=>setView(c.dataset.vm));
+
+  // 모바일 : 관리 도구 펼치기/접기
+  $$('.admtg').forEach(b=>b.onclick=()=>{
+    const bar=b.closest('.bar'), on=!bar.classList.contains('adm-on');
+    bar.classList.toggle('adm-on',on); b.setAttribute('aria-expanded',String(on));
+  });
+
+  // 모바일 : 누른 탭을 가운데로 / 탭 전환 시 맨 위로
+  const tabs=$$('.tab');
+  tabs.forEach((t,i)=>{
+    t.addEventListener('click',()=>{
+      if(cur()!=='m')return;
+      t.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
+      const nav=document.querySelector('nav');
+      if(nav&&nav.getBoundingClientRect().top<=0)window.scrollTo({top:nav.offsetTop,behavior:'instant'});
+    });
+    if(i<9){const k=document.createElement('span');k.className='kb';k.textContent='Alt+'+(i+1);t.appendChild(k);
+      t.title=t.textContent.replace(k.textContent,'').trim()+' (Alt+'+(i+1)+')';}
+  });
+
+  // PC : 키보드 단축키 — Alt+1~7 탭 이동, / 검색창
+  document.addEventListener('keydown',e=>{
+    if(cur()!=='pc')return;
+    if(document.querySelector('.mask.on,#qrMask.on'))return;
+    const tag=(e.target.tagName||'').toLowerCase(), typing=tag==='input'||tag==='textarea'||tag==='select';
+    if(e.altKey&&!e.ctrlKey&&!e.metaKey&&/^Digit[1-9]$/.test(e.code)){
+      const t=tabs[+e.code.slice(5)-1]; if(t){e.preventDefault();t.click();t.focus();} return;
+    }
+    if(e.key==='/'&&!typing&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
+      const sec=[...document.querySelectorAll('.wrap > section')].find(x=>!x.hidden);
+      const inp=sec&&[...sec.querySelectorAll('input[type=search]')].find(x=>x.offsetParent);
+      if(inp){e.preventDefault();inp.focus();inp.select();}
+    }
+  });
+  sync();
+})();
 </script>
 </body></html>
