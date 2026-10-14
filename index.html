@@ -425,6 +425,32 @@ html[data-view=m] #gitbl td.sec{padding:7px 9px;border-radius:6px}
 html[data-view=m] .gopt{flex-wrap:wrap;gap:5px}
 html[data-view=m] .gopt button{min-width:0;flex:1 1 30%;padding:8px 4px;font-size:12px}
 
+/* 점검 이력 표 → 이력 카드 (품번 | 판정 / 점검일 | 등급 | 금형번호 / 고객사 | 타발수 | 점검자 / 불량항목) */
+html[data-view=m] #htbl thead{display:none}
+html[data-view=m] #htbl,html[data-view=m] #htbl tbody{display:block}
+html[data-view=m] #htbl tr{display:grid;grid-template-columns:92px 74px 1fr auto;
+  grid-template-areas:"pn pn pn ju" "dt gr mn mn" "cu sh sh wh" "df df df df";
+  align-items:center;gap:5px 8px;padding:11px 2px;border-bottom:1px solid var(--line)}
+html[data-view=m] #htbl tr:last-child{border-bottom:0}
+html[data-view=m] #htbl td{display:block;border:0;padding:0;min-width:0;font-size:13px!important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html[data-view=m] #htbl td.empty{grid-column:1/-1;white-space:normal}
+html[data-view=m] #htbl .h-pn{grid-area:pn;font-size:15.5px!important}
+html[data-view=m] #htbl .h-ju{grid-area:ju;text-align:right}
+html[data-view=m] #htbl .h-dt{grid-area:dt}
+html[data-view=m] #htbl .h-gr{grid-area:gr}
+html[data-view=m] #htbl .h-gr .badge{margin:0}
+html[data-view=m] #htbl .h-mn{grid-area:mn;color:var(--muted)}
+html[data-view=m] #htbl .h-cu{grid-area:cu}
+html[data-view=m] #htbl .h-sh{grid-area:sh}
+html[data-view=m] #htbl .h-sh:not(.h-na)::after{content:"타";font-family:var(--sans);color:var(--muted);margin-left:1px}
+html[data-view=m] #htbl .h-wh{grid-area:wh;text-align:right}
+html[data-view=m] #htbl .h-wh:not(:empty)::before{content:"점검자 ";color:var(--muted);font-size:11.5px}
+html[data-view=m] #htbl .h-df{grid-area:df;white-space:normal;color:var(--bad);background:var(--bad-bg);
+  border-radius:6px;padding:5px 8px}
+html[data-view=m] #htbl .h-df.h-na{display:none}
+html[data-view=m] #p-hist .card{padding:4px 12px}
+
 /* QR 스캔 창 → 전체 화면 */
 html[data-view=m] #qrMask.on{padding:0}
 html[data-view=m] .qrbox{max-width:none;height:100%;max-height:none;border-radius:0}
@@ -10790,13 +10816,13 @@ function renderHist(){
   const rows=HIST.filter(h=>(!c||(h.고객사||custOf(h.품번))===c)&&(!q||h.품번.toLowerCase().includes(q)||(h.점검자||'').toLowerCase().includes(q)))
     .sort((a,b)=>b.점검일.localeCompare(a.점검일));
   $('#htbl tbody').innerHTML = rows.length? rows.map(h=>`<tr>
-    <td style="font-family:var(--mono)">${h.점검일}</td>
-    <td style="font-size:11px;color:var(--muted)">${h.고객사||custOf(h.품번)}</td><td><b>${h.품번}</b></td>
-    <td style="font-family:var(--mono);font-size:12px">${h.금형번호||''}</td>
-    <td><span class="badge b-${(h.등급||'B')[0]}">${h.등급||''}</span></td>
-    <td style="font-family:var(--mono)">${h.타발수?Number(h.타발수).toLocaleString():'—'}</td>
-    <td><span class="pill ${h.판정==='합격'?'p-ok':'p-bad'}">${h.판정}</span></td>
-    <td style="font-size:12px">${h.불량||'—'}</td><td>${h.점검자||''}</td></tr>`).join('')
+    <td class="h-dt" style="font-family:var(--mono)">${h.점검일}</td>
+    <td class="h-cu" style="font-size:11px;color:var(--muted)">${h.고객사||custOf(h.품번)}</td><td class="h-pn"><b>${h.품번}</b></td>
+    <td class="h-mn" style="font-family:var(--mono);font-size:12px">${h.금형번호||''}</td>
+    <td class="h-gr"><span class="badge b-${(h.등급||'B')[0]}">${h.등급||''}</span></td>
+    <td class="h-sh${h.타발수?'':' h-na'}" style="font-family:var(--mono)">${h.타발수?Number(h.타발수).toLocaleString():'—'}</td>
+    <td class="h-ju"><span class="pill ${h.판정==='합격'?'p-ok':'p-bad'}">${h.판정}</span></td>
+    <td class="h-df${h.불량?'':' h-na'}" style="font-size:12px">${h.불량||'—'}</td><td class="h-wh">${h.점검자||''}</td></tr>`).join('')
     : `<tr><td colspan="9" class="empty"><b>점검 이력이 없습니다</b>점검 대상에서 금형을 선택해 점검을 기록하세요.</td></tr>`;
 }
 function planYear(){return +($('#py').value||new Date().getFullYear())}
