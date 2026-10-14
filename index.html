@@ -11113,6 +11113,8 @@ function gradeState(pn){
 function fillGradeSelect(){
   $('#gc').innerHTML='<option value="">고객사 전체</option>'+CUSTS.map(c=>`<option>${c}</option>`).join('');
 }
+// F등급(A/S·단종)은 평가점수로 산정되지 않는 지정 등급 → 불일치 대상에서 제외
+const gDiff=(m,st)=>!!st&&m.등급!=='F등급'&&st.등급!==m.등급;
 function gradeList(){
   const c=$('#gc').value, q=$('#gq').value.trim().toLowerCase();
   return MOLDS.filter(m=>{
@@ -11121,7 +11123,7 @@ function gradeList(){
     const st=gradeState(m.품번);
     if(gfilter==='done')return !!st;
     if(gfilter==='none')return !st;
-    if(gfilter==='diff')return !!st&&st.등급!==m.등급;
+    if(gfilter==='diff')return gDiff(m,st);
     return true;
   });
 }
@@ -11130,7 +11132,7 @@ function renderGrade(){
   const list=gradeList();
   let done=0,none=0,diff=0,fc=0;
   MOLDS.forEach(m=>{const st=gradeState(m.품번);
-    if(!st){none++;return} done++; if(st.등급!==m.등급)diff++; if(st.forced.length)fc++;});
+    if(!st){none++;return} done++; if(gDiff(m,st))diff++; if(st.forced.length)fc++;});
   $('#gsum').innerHTML=[['평가 완료',done+'건'],['미평가',none+'건'],['등급 불일치',diff+'건'],['강제 C등급',fc+'건']]
     .map(([t,v])=>`<div class="ms"><b style="font-size:16px">${v}</b><span>${t}</span></div>`).join('');
   $('#gtbl tbody').innerHTML = list.length? list.map(m=>{
@@ -11143,7 +11145,8 @@ function renderGrade(){
       <td style="text-align:center"><span class="badge b-${m.등급[0]}" style="margin:0">${m.등급}</span></td>
       <td class="num"><b>${st?st.tot:'—'}</b></td>
       <td style="text-align:center">${ng?`<span class="badge b-${ng[0]}" style="margin:0">${ng}</span>`:'—'}
-        ${st&&ng!==m.등급?'<span class="gw" style="margin-left:5px">불일치</span>':''}</td>
+        ${gDiff(m,st)?'<span class="gw" style="margin-left:5px">불일치</span>'
+          :st&&m.등급==='F등급'?`<span class="gw" style="margin-left:5px;background:var(--none-bg);color:var(--none)" title="F등급(A/S·단종)은 지정 등급입니다. 산정 등급은 참고용입니다.">F 지정 · 참고</span>`:''}</td>
       <td style="font-size:11px;color:var(--bad)">${st&&st.forced.length?st.forced.join(', '):''}</td>
       <td style="text-align:center;font-family:var(--mono);font-size:11px">${st?st.평가일:''}</td>
       <td style="text-align:center;font-size:11px">${st?st.평가자:''}</td>
