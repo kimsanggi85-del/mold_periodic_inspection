@@ -10253,6 +10253,27 @@ html[data-view=m] .qrfoot input{font-size:16px}
             <option value="17">매일 17시</option>
           </select></div>
       </div>
+      <div class="card" style="background:#F6F7F8;margin:12px 0 0">
+        <h3>알림 링크 · 알림을 누르면 열 화면</h3>
+        <div class="grid2">
+          <div class="fld"><label>열 주소 <span style="font-weight:400">(비우면 현재 앱 주소 자동)</span></label>
+            <input type="text" id="nt-url" placeholder="https://kimsanggi85-del.github.io/mold_periodic_inspection/" inputmode="url" autocomplete="off"></div>
+          <div class="fld"><label>열 화면</label>
+            <select id="nt-open">
+              <option value="auto">알림 내용에 맞게 자동 (권장)</option>
+              <option value="target">점검 대상</option>
+              <option value="wash">세척점검 · 금형별 현황</option>
+              <option value="shot">타발수 관리</option>
+              <option value="hist">점검 이력</option>
+              <option value="plan">연간 계획일정</option>
+              <option value="home">앱 첫 화면</option>
+            </select></div>
+        </div>
+        <div class="bar" style="margin:10px 0 0">
+          <button class="btn ghost" id="nt-linktest" type="button">링크 미리 열기</button>
+          <span class="note" id="nt-linkprev" style="word-break:break-all"></span>
+        </div>
+      </div>
       <div class="card" style="background:#F6F7F8;margin:12px 0">
         <h3>알림 항목</h3>
         <div class="grid2">
@@ -11391,7 +11412,7 @@ async function gbRun(){
 }
 
 /* ==================== ntfy 경고 알림 ==================== */
-let NTFY={on:false,topic:'',hour:8,day:'',prev:[],
+let NTFY={on:false,topic:'',hour:8,day:'',prev:[],url:'',open:'auto',
   items:{over:true,soon:true,wover:true,wsoon:true,nobase:false,miss:false}};
 /* 한국시간(UTC+9) — 기기 시간대와 무관 */
 function kstNow(){const d=new Date(Date.now()+9*3600e3);
@@ -11403,6 +11424,8 @@ function ntUI(){
   $('#nt-on').checked=!!NTFY.on;
   $('#nt-topic').value=NTFY.topic||'';
   $('#nt-hour').value=String(NTFY.hour??8);
+  $('#nt-url').value=NTFY.url||''; $('#nt-open').value=NTFY.open||'auto';
+  ntLinkPrev();
   Object.keys(NTFY.items).forEach(k=>{const el=$('#nt-'+k); if(el)el.checked=!!NTFY.items[k]});
   const ok=NTFY.on&&NTFY.topic;
   const b=$('#nt-badge');
@@ -11413,14 +11436,31 @@ function ntRead(){
   NTFY.on=$('#nt-on').checked;
   NTFY.topic=$('#nt-topic').value.trim();
   NTFY.hour=+$('#nt-hour').value; if(isNaN(NTFY.hour))NTFY.hour=8;
+  NTFY.url=$('#nt-url').value.trim(); NTFY.open=$('#nt-open').value||'auto';
   Object.keys(NTFY.items).forEach(k=>{const el=$('#nt-'+k); if(el)NTFY.items[k]=el.checked});
 }
 /* 알림을 누르면 열 주소 — 웹에서 열린 경우 그 주소, 파일로 연 경우 GitHub Pages 주소 */
 const APP_URL='https://kimsanggi85-del.github.io/mold_periodic_inspection/';
 function ntUrl(link){
-  const base=/^https?:$/.test(location.protocol)
-    ? location.origin+location.pathname.replace(/(pc|mobile)\.html$/,'') : APP_URL;
+  const set=(NTFY.url||'').trim().replace(/#.*$/,'');
+  const base=/^https?:\/\//i.test(set) ? set
+    : /^https?:$/.test(location.protocol) ? location.origin+location.pathname.replace(/(pc|mobile)\.html$/,'') : APP_URL;
   return base+(link?'#'+link:'');
+}
+// 설정한 '열 화면' 기준 링크 (auto : 알림에 처음 나오는 항목 기준)
+function ntLink(k){
+  const o=NTFY.open||'auto';
+  if(o==='auto')return k?NT_LINK[k]:'t=target';
+  if(o==='home')return '';
+  return o==='wash'?'t=wash&wv=stat':'t='+o;
+}
+function ntLinkPrev(){
+  const keep={url:NTFY.url,open:NTFY.open};
+  NTFY.url=$('#nt-url').value.trim(); NTFY.open=$('#nt-open').value||'auto';
+  const bad=NTFY.url&&!/^https?:\/\//i.test(NTFY.url);
+  $('#nt-linkprev').innerHTML=bad?'<b style="color:var(--bad)">주소는 https:// 로 시작해야 합니다</b>'
+    :(NTFY.open==='auto'?'예) 주기 초과 알림 → ':'알림 클릭 시 → ')+ntUrl(ntLink('over'));
+  Object.assign(NTFY,keep);
 }
 // 알림 항목 → 앱에서 바로 열 탭 · 필터
 const NT_LINK={over:'t=target&f=over',soon:'t=target&f=soon',wover:'t=wash&wv=stat',
@@ -11508,7 +11548,7 @@ async function ntCheck(manual){
     const title=`[태진다이텍] 금형 일일 알림 ${k.md}`+(list.length?' · '+list.map(a=>a.t.replace('금형 ','')+' '+a.n).join(' / '):' · 해소');
     const pri=list.reduce((m,a)=>Math.max(m,a.pri),3);
     const tags=list.some(a=>a.pri>=5)?['rotating_light']:(list.length?['bell']:['white_check_mark']);
-    try{ await ntSend(title,body,tags,pri,list.length?NT_LINK[list[0].k]:'t=target') }
+    try{ await ntSend(title,body,tags,pri,ntLink(list.length?list[0].k:null)) }
     catch(e){ if(!manual){NTFY.day='';if(sb)pushSoon()} $('#nt-st').textContent='발송 실패: '+e.message; toast('ntfy 발송 실패'); return }
     msg=`${manual?'수동':'일일'} 발송 ${k.md} ${k.hm} · ${list.length}개 항목`+(back.length?` · 해소 ${back.length}`:'');
   }
@@ -11981,9 +12021,16 @@ $('#bmask').onclick=e=>{if(e.target===$('#bmask'))closeB()};
 ['#b-y','#b-m1','#b-m2','#b-c','#b-d'].forEach(id=>$(id).onchange=bPrev);
 $('#mask').onclick=e=>{if(e.target===$('#mask'))closeM()};
 document.onkeydown=e=>{if(e.key==='Escape'){closeM();closeP();closeG();closeB();closeGB();closeMM();closeWP();closeWBK()}};
+$('#nt-url').oninput=ntLinkPrev; $('#nt-open').onchange=ntLinkPrev;
+$('#nt-linktest').onclick=()=>{
+  ntRead();
+  if(NTFY.url&&!/^https?:\/\//i.test(NTFY.url)){toast('열 주소는 https:// 로 시작해야 합니다');$('#nt-url').focus();return}
+  window.open(ntUrl(ntLink('over')),'_blank');
+};
 $('#nt-save').onclick=async()=>{
   ntRead();
   if(NTFY.on&&!NTFY.topic){toast('토픽명을 입력하세요');$('#nt-topic').focus();return}
+  if(NTFY.url&&!/^https?:\/\//i.test(NTFY.url)){toast('열 주소는 https:// 로 시작해야 합니다');$('#nt-url').focus();return}
   ntUI(); ntStart();
   $('#nt-st').textContent=NTFY.on?`감시 시작 · 토픽 ${NTFY.topic} · 매일 ${String(NTFY.hour).padStart(2,'0')}시(한국시간) 1회`:'알림을 사용하지 않습니다.';
   toast('알림 설정을 저장했습니다');
@@ -11995,7 +12042,7 @@ $('#nt-test').onclick=async()=>{
   try{
     await ntSend('[태진다이텍] 테스트 알림',
       `금형 정기점검·세척점검 관리 알림 테스트입니다.\n토픽 : ${NTFY.topic}\n시각 : ${new Date().toLocaleString('ko-KR')}`,
-      ['bell'],3,'t=target');
+      ['bell'],3,ntLink(null));
     $('#nt-st').textContent=`테스트 발송 완료 · ${new Date().toLocaleTimeString('ko-KR')}`;
     toast('테스트 알림을 보냈습니다');
   }catch(e){$('#nt-st').textContent='발송 실패: '+e.message; toast('발송 실패 — 토픽명과 네트워크를 확인하세요')}
