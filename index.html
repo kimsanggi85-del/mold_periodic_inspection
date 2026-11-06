@@ -11525,6 +11525,7 @@ async function ntCheck(manual){
   const k=kstNow();
   if(!manual){
     if(k.hour<(NTFY.hour??8)||NTFY.day===k.day)return;          // 발송 시각 전 · 오늘 이미 발송
+    if(sb&&MES.on&&!MES.loaded)return;                          // MES 타발수 반영 전에는 보내지 않음 (10분 뒤 다시 확인)
     if(sb){                                                     // 다른 기기가 오늘 이미 보냈는지 서버 확인
       try{const {data}=await sb.from('kv_store').select('n:value->ntfy').eq('key','mold_periodic_v1').single();
         const sv=data&&data.n;
@@ -12115,7 +12116,10 @@ function ledgerEnd(pn){
 function mesRows(pn){
   if(!MES.on||!MES.loaded)return [];
   const m=MOLDS.find(x=>x.품번===pn);
-  return (m&&m.금형번호&&MES.byMold[m.금형번호]) || MES.byPn[pn] || [];
+  /* 금형번호가 있으면 그 금형 실적만 — 같은 품번의 다른 금형(2호 금형 등) 타발수가 섞이지 않게.
+     금형번호가 마스터에 없을 때만 품번으로 찾는다 */
+  if(m&&m.금형번호) return MES.byMold[m.금형번호]||[];
+  return MES.byPn[pn]||[];
 }
 /* from < 일자 <= to 구간 MES 타발수 합계 */
 function mesSum(pn,from,to){
@@ -12482,7 +12486,7 @@ $('#wb-clr').onclick=async()=>{
 };
 $('#w-scsv').onclick=()=>{
   const rows=[['고객사','품번','금형번호','등급','세척유형','정기세척 기준(타)','기간 기준(일)',
-    '기준 타발수','기준일','기준 출처','대장 누적타발수','사용 타발수','잔여 타발수','경과일','잔여일',
+    '기준 타발수','기준일','기준 출처','누적타발수(대장+MES)','사용 타발수','잔여 타발수','경과일','잔여일',
     '판정기준','진행률(%)','상태','최근 세척일','MES 보정 타발수','최근30일 일평균','예상 도래일','예상 잔여일','사전계획 대상']];
   MOLDS.forEach(m=>{const s=wState(m);
     rows.push([m.고객사,m.품번,m.금형번호,m.등급,wkind(m.등급),s.lim,WPERIOD,
@@ -12724,6 +12728,7 @@ if(!Object.keys(PLAN).length) PLAN=defaultPlan();
 render();
 wInit();
 connect(true).then(()=>wPull(true)).then(()=>mesLoad());
+setInterval(()=>{ if(sb) mesLoad(); },10*60000);   // MES 타발수 10분마다 갱신 (실패 시 재시도 포함)
 </script>
 
 
