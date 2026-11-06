@@ -242,6 +242,7 @@ th{font-size:11px;color:var(--muted);font-weight:800;background:#F6F7F8;letter-s
 .sc4{background:var(--bad-bg);color:var(--bad)} .sc3{background:var(--warn-bg);color:var(--warn)}
 .sc12{background:var(--ok-bg);color:var(--ok)}
 .ssum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+#wsum{grid-template-columns:repeat(5,1fr)}
 /* 등급 평가 */
 .gopt{display:flex;gap:4px}
 .gopt button{flex:1;min-width:92px;padding:6px;border:1px solid var(--line);background:var(--surface);
@@ -359,7 +360,7 @@ html[data-view=m] .bar:not(.adm-on) .adm{display:none!important}
 html[data-view=m] .admtg[aria-expanded=true]{background:var(--ink);color:#fff}
 html[data-view=m] .card{padding:12px;border-radius:9px}
 html[data-view=m] .grid2,html[data-view=m] .grid3{grid-template-columns:1fr;gap:10px}
-html[data-view=m] .ssum{grid-template-columns:repeat(2,1fr)}
+html[data-view=m] .ssum,html[data-view=m] #wsum{grid-template-columns:repeat(2,1fr)}
 html[data-view=m] .msum{grid-template-columns:repeat(6,1fr)}
 
 /* 점검 대상 · 세척 현황 카드 : 품번 | D-day / 게이지 */
@@ -6503,6 +6504,7 @@ html[data-view=m] .qrfoot input{font-size:16px}
         <button class="chip" data-wf="all" aria-pressed="true">전체</button>
         <button class="chip" data-wf="over" aria-pressed="false">정기세척 도래</button>
         <button class="chip" data-wf="soon" aria-pressed="false">임박</button>
+        <button class="chip" data-wf="plan" aria-pressed="false" title="최근 30일 일평균 타발수 기준 30일 이내 정기세척 도래 예상">30일내 도래예상</button>
         <button class="chip" data-wf="never" aria-pressed="false">세척 이력 없음</button>
         <button class="chip" data-wf="nobase" aria-pressed="false">기준점 미설정</button>
         <select id="w-fc"><option value="">고객사 전체</option><option>SKF씰</option><option>SKF SBC</option><option>일진글로벌</option><option>부강스프링</option><option>진양오일씰</option><option>코아텍</option><option>미등록</option><option>세동산업</option></select>
@@ -11496,7 +11498,7 @@ function ntCollect(){
   const wo=[],ws=[],nb=[];
   MOLDS.forEach(m=>{const st=wState(m);
     if(st.k==='over')wo.push(`${m.품번} (${m.고객사} · 사용 ${wnf(st.used)}/${wnf(st.lim)}타 · ${st.by})`);
-    else if(st.k==='soon')ws.push(`${m.품번} (${m.고객사} · ${st.pct}%)`);
+    else if(st.k==='soon')ws.push(`${m.품번} (${m.고객사} · ${st.pct}% · 예상 ${st.eta} D-${st.etaDays})`);
     else if(st.k==='nobase')nb.push(`${m.품번} (${m.고객사})`);
   });
   if(it.wover&&wo.length)out.push({k:'wover',t:'금형 정기세척 도래',
@@ -11504,7 +11506,7 @@ function ntCollect(){
     head:`정기세척 기준(양산 100만 · A/S 50만타 또는 1년)에 도달한 금형 ${wo.length}품번입니다.`});
   if(it.wsoon&&ws.length)out.push({k:'wsoon',t:'금형 정기세척 임박',
     n:ws.length,list:ws,tags:['hourglass'],pri:3,
-    head:`정기세척 기준의 90%를 넘은 금형 ${ws.length}품번입니다.`});
+    head:`정기세척 기준의 90%를 넘었거나 ${WPLAN_DAYS}일 이내 도래가 예상되는 금형 ${ws.length}품번입니다. 세척 계획을 수립하세요.`});
   if(it.nobase&&nb.length)out.push({k:'nobase',t:'세척 기준점 미설정',
     n:nb.length,list:nb,tags:['grey_question'],pri:2,
     head:`정기세척 기준점이 없어 판정에서 빠진 금형 ${nb.length}품번입니다.`});
@@ -11523,6 +11525,7 @@ async function ntCheck(manual){
   const k=kstNow();
   if(!manual){
     if(k.hour<(NTFY.hour??8)||NTFY.day===k.day)return;          // 발송 시각 전 · 오늘 이미 발송
+    if(sb&&MES.on&&!MES.loaded)return;                          // MES 타발수 반영 전에는 보내지 않음 (10분 뒤 다시 확인)
     if(sb){                                                     // 다른 기기가 오늘 이미 보냈는지 서버 확인
       try{const {data}=await sb.from('kv_store').select('n:value->ntfy').eq('key','mold_periodic_v1').single();
         const sv=data&&data.n;
@@ -12097,13 +12100,70 @@ const wkind=g=>g==='F등급'?'A/S금형':'양산금형';
 const wnf=v=>v==null||v===''?'—':Number(v).toLocaleString();
 let WASH=[], WBASE={}, wdone={}, wfilter='all', wview='do';
 
-/* 타발수 대장 최신 누적값 (없으면 마지막 세척기록의 타발수) */
-function wCum(pn){
-  const v=latestShot(pn);
-  if(v!=null)return v;
-  const l=wLast(pn,false);
-  return l&&l.타발수!==''&&l.타발수!=null?Number(l.타발수):null;
+/* ===================== MES 일별 타발수 자동 보정 (daily_production) =====================
+   타발수 대장은 월 1회 입력이라 다음 입력 전까지 세척 도래 판단이 늦어진다.
+   → 대장 마지막 입력월 말일 이후의 MES 실적 타발수(shot_qty)를 더해 '현재 추정 누적'으로 판정한다.
+   → 최근 30일 일평균 타발수로 정기세척 예상 도래일을 산출해 30일 전에 사전계획 대상으로 올린다. */
+const MES_AVG_DAYS=30, WPLAN_DAYS=30;
+let MES={on:true,loaded:false,err:'',rows:0,last:null,byMold:{},byPn:{}};
+function ymdAdd(s,n){const d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)}
+/* 타발수 대장 마지막 입력월의 말일 */
+function ledgerEnd(pn){
+  for(const y of SHOT_YEARS){const a=(SHOT[y]||{})[pn]; if(!a)continue;
+    for(let i=11;i>=0;i--) if(a[i]!=null) return new Date(Date.UTC(+y,i+1,0)).toISOString().slice(0,10);}
+  return null;
 }
+function mesRows(pn){
+  if(!MES.on||!MES.loaded)return [];
+  const m=MOLDS.find(x=>x.품번===pn);
+  /* 금형번호가 있으면 그 금형 실적만 — 같은 품번의 다른 금형(2호 금형 등) 타발수가 섞이지 않게.
+     금형번호가 마스터에 없을 때만 품번으로 찾는다 */
+  if(m&&m.금형번호) return MES.byMold[m.금형번호]||[];
+  return MES.byPn[pn]||[];
+}
+/* from < 일자 <= to 구간 MES 타발수 합계 */
+function mesSum(pn,from,to){
+  let t=0; for(const r of mesRows(pn)) if((!from||r.d>from)&&(!to||r.d<=to)) t+=r.q; return t;
+}
+function mesAvg(pn){ return mesSum(pn,ymdAdd(today(),-MES_AVG_DAYS),today())/MES_AVG_DAYS; }
+async function mesLoad(){
+  if(!sb)return;
+  const ends=MOLDS.map(m=>ledgerEnd(m.품번)).filter(Boolean).sort();
+  let from=ymdAdd(today(),-MES_AVG_DAYS-1);
+  if(ends.length&&ends[0]<from)from=ends[0];
+  const floor=ymdAdd(today(),-400); if(from<floor)from=floor;
+  try{
+    const all=[];
+    for(let off=0;off<20000;off+=1000){
+      const {data,error}=await sb.from('daily_production').select('ymd,mold_code,item_code,shot_qty')
+        .gt('ymd',from).order('ymd').range(off,off+999);
+      if(error)throw error;
+      all.push(...(data||[])); if(!data||data.length<1000)break;
+    }
+    const mns=new Set(MOLDS.map(m=>m.금형번호).filter(Boolean));
+    const bm={}, bp={}; let last=null;
+    all.forEach(r=>{
+      const q=Number(r.shot_qty)||0; if(!q)return;
+      const d=String(r.ymd).slice(0,10); if(!last||d>last)last=d;
+      const o={d,q};
+      if(r.mold_code&&mns.has(r.mold_code))(bm[r.mold_code]=bm[r.mold_code]||[]).push(o);
+      else if(r.item_code)(bp[r.item_code]=bp[r.item_code]||[]).push(o);
+    });
+    MES=Object.assign(MES,{loaded:true,err:'',rows:all.length,last,byMold:bm,byPn:bp});
+  }catch(e){ MES.loaded=false; MES.err=e.message||String(e); }
+  renderWash();
+}
+/* 타발수 대장 최신 누적값 (+ 대장 이후 MES 실적) · 대장 없으면 마지막 세척기록 타발수 기준 */
+function wCumAt(pn,date){
+  date=date||today();
+  const v=latestShot(pn);
+  if(v!=null)return v+mesSum(pn,ledgerEnd(pn),date);
+  const l=wLast(pn,false);
+  if(!(l&&l.타발수!==''&&l.타발수!=null))return null;
+  return Number(l.타발수)+mesSum(pn,l.세척일,date);
+}
+function wCum(pn){ return wCumAt(pn,today()); }
+function wMesAdd(pn){ const v=latestShot(pn); return v==null?0:mesSum(pn,ledgerEnd(pn),today()); }
 function wLast(pn,onlyReg){
   return WASH.filter(h=>h.품번===pn&&(!onlyReg||String(h.구분||'').startsWith('정기')))
     .sort((a,b)=>String(b.세척일||'').localeCompare(String(a.세척일||'')))[0]||null;
@@ -12129,8 +12189,15 @@ function wState(m){
   const dayPct=Math.min(gone/WPERIOD*100,100);
   const pct=Math.max(shotPct,dayPct);
   const by=shotPct>=dayPct?'타발수':'경과기간';
-  const k=pct>=100?'over':pct>=90?'soon':'ok';
-  return {k,lim,cur,base,used,left:lim-used,gone,left2:WPERIOD-gone,
+  /* 예상 도래일 : 잔여 타발수 ÷ 최근 30일 일평균 vs 기간 기준 잔여일 중 빠른 쪽 */
+  const avg=mesAvg(pn), left=lim-used, left2=WPERIOD-gone;
+  const dShot=avg>0?Math.ceil(Math.max(left,0)/avg):null;
+  const etaDays=Math.max(0,dShot==null?left2:Math.min(dShot,left2));
+  const etaBy=dShot!=null&&dShot<=left2?'타발수':'경과기간';
+  const plan=pct<100&&etaDays<=WPLAN_DAYS;
+  const k=pct>=100?'over':(pct>=90||plan)?'soon':'ok';
+  return {k,lim,cur,base,used,left,gone,left2,avg,etaDays,etaBy,plan,
+          eta:ymdAdd(today(),etaDays),mes:wMesAdd(pn),
           pct:Math.round(pct),by,last:(wLast(pn,false)||{}).세척일||null};
 }
 const WKTXT={over:'정기세척 도래',soon:'임박',ok:'정상',nobase:'기준점 미설정'};
@@ -12163,18 +12230,19 @@ function wInfo(reset){
   if(reset||!$('#w-shot').value) $('#w-shot').value = st.cur==null?'':st.cur;
   $('#w-shotnote').innerHTML = st.cur==null
     ? '<span style="color:var(--warn)">타발수 대장에 누적값이 없습니다 — 직접 입력하세요.</span>'
-    : `타발수 대장 최신 누적 <b>${wnf(st.cur)}타</b> 자동 입력`;
+    : `타발수 대장 최신 누적 <b>${wnf(st.cur)}타</b> 자동 입력`+(st.mes?` (MES 실적 +${wnf(st.mes)}타 포함)`:'');
   const c=st.k==='over'?'t-bad':st.k==='soon'?'t-warn':st.k==='nobase'?'t-na':'t-ok';
   const l=wLast(m.품번,false), reg=wLast(m.품번,true);
   const line = st.k==='nobase'
     ? `<b class="t-na">기준점 미설정</b> — 기준·데이터 탭에서 [현재 누적타발수로 기준점 설정]을 누르거나,
        이번 기록을 <b>정기세척</b>으로 저장하면 기준점이 잡힙니다.`
     : `사용 타발수 <b>${wnf(st.used)}</b>/${wnf(st.lim)}타 (잔여 ${wnf(Math.max(st.left,0))}타) ·
-       경과 ${st.gone}/${WPERIOD}일 → <b class="${c}">${st.pct}% · ${WKTXT[st.k]} (기준 : ${st.by})</b>`;
+       경과 ${st.gone}/${WPERIOD}일 → <b class="${c}">${st.pct}% · ${WKTXT[st.k]} (기준 : ${st.by})</b>`+
+      (st.k==='over'?'':`<br>정기세척 예상 도래일 <b class="${c}">${st.eta} (D-${st.etaDays})</b> · ${st.etaBy} 기준 · 최근 ${MES_AVG_DAYS}일 일평균 ${wnf(Math.round(st.avg))}타`);
   $('#w-info').innerHTML=`고객사 <b>${m.고객사||'—'}</b> · 금형번호 <b style="font-family:var(--mono)">${m.금형번호||'—'}</b> ·
     ${m.등급} → <b>${wkind(m.등급)}</b> · 정기세척 기준 <b>${wnf(st.lim)}타</b> 또는 <b>${WPERIOD}일</b><br>
     기준점 ${st.base?`<b>${wnf(st.base.v)}타</b> (${st.base.date} · ${st.base.src})`:'<b class="t-na">없음</b>'} ·
-    대장 누적 <b>${wnf(st.cur)}타</b> · 최근 세척 ${l?l.세척일+' ('+String(l.구분).split(' ')[0]+')':'이력 없음'} ·
+    누적 <b>${wnf(st.cur)}타</b>${st.mes?` (대장 ${wnf(st.cur-st.mes)} + MES ${wnf(st.mes)})`:''} · 최근 세척 ${l?l.세척일+' ('+String(l.구분).split(' ')[0]+')':'이력 없음'} ·
     최근 정기세척 ${reg?reg.세척일:'없음'}<br>${line}`;
 }
 function wDrawSteps(){
@@ -12195,8 +12263,9 @@ function renderWash(){
   $('#wsum').innerHTML=[
     ['등록 금형',MOLDS.length+'건'],
     ['금일 세척 실시',WASH.filter(h=>h.세척일===t).length+'건'],
-    ['정기세척 임박 (90%↑)',soon+'건'],
-    ['정기세척 도래 / 기준점 미설정',over+' / '+nob+'건']
+    ['정기세척 임박 (90%↑ · '+WPLAN_DAYS+'일내 예상)',soon+'건'],
+    ['정기세척 도래 / 기준점 미설정',over+' / '+nob+'건'],
+    ['MES 타발수 연동',MES.loaded?`${MES.rows}행 · ~${MES.last||'—'}`:(MES.err?'연결 실패':'불러오는 중')]
   ].map(([a,b])=>`<div class="ms"><b style="font-size:16px">${b}</b><span>${a}</span></div>`).join('');
 
   const q=($('#w-q').value||'').trim().toLowerCase(), fc=$('#w-fc').value;
@@ -12205,8 +12274,10 @@ function renderWash(){
     if(q&&!(m.품번.toLowerCase().includes(q)||(m.금형번호||'').toLowerCase().includes(q)))return false;
     if(wfilter==='all')return true;
     if(wfilter==='never')return !wLast(m.품번,false);
+    if(wfilter==='plan')return s.k!=='nobase'&&s.k!=='over'&&s.etaDays<=WPLAN_DAYS;
     return s.k===wfilter;
-  }).sort((a,b)=>{const r={over:0,soon:1,nobase:2,ok:3};return r[a.s.k]-r[b.s.k]});
+  }).sort((a,b)=>{const r={over:0,soon:1,nobase:2,ok:3};
+    return (r[a.s.k]-r[b.s.k])||((a.s.etaDays??9e9)-(b.s.etaDays??9e9))});
 
   $('#w-list').innerHTML=rows.length?rows.map(({m,s})=>{
     const cls={over:'bad',soon:'warn',ok:'ok',nobase:'na'}[s.k];
@@ -12217,8 +12288,9 @@ function renderWash(){
       <div><div class="pn">${m.품번}<span class="badge ${wkind(m.등급)==='양산금형'?'b-y':'b-a'}">${wkind(m.등급)} ${wnf(s.lim)}타</span>
         <span class="badge b-${m.등급[0]}">${m.등급}</span></div>
         <div class="mn">${m.고객사||''} · ${m.금형번호||'금형번호 미등록'} ·
-          대장 누적 ${wnf(s.cur)} / 기준 ${s.base?wnf(s.base.v):'—'} =
-          <b>사용 ${s.used==null?'—':wnf(s.used)}타</b>${s.gone==null?'':' · 경과 '+s.gone+'일'}</div></div>
+          누적 ${wnf(s.cur)}${s.mes?`<span title="타발수 대장 이후 MES 실적 타발수"> (MES +${wnf(s.mes)})</span>`:''} / 기준 ${s.base?wnf(s.base.v):'—'} =
+          <b>사용 ${s.used==null?'—':wnf(s.used)}타</b>${s.gone==null?'':' · 경과 '+s.gone+'일'}
+          ${s.k==='nobase'||s.k==='over'?'':`<br>예상 도래 <b class="t-${cls}">${s.eta} (D-${s.etaDays})</b> · ${s.etaBy} 기준${s.avg>0?' · 일평균 '+wnf(Math.round(s.avg))+'타':' · 최근 '+MES_AVG_DAYS+'일 생산 없음'}${s.plan?' · <b class="t-warn">사전계획 대상</b>':''}`}</div></div>
       <div class="gauge"><div class="lbl">${s.last?'최근 세척 '+s.last:'세척 이력 없음'}</div>
         <div class="due">${s.k==='nobase'?'':s.pct+'%'}</div>
         <div class="track"><div class="fill f-${cls}" style="width:${s.pct}%"></div></div></div>
@@ -12322,9 +12394,10 @@ async function wSave(){
   if(n<6){toast(`세척 순서 ${6-n}단계가 남았습니다`);return}
   if(!$('#w-by').value.trim()){toast('실시자를 입력하세요');$('#w-by').focus();return}
   const st=wState(m);
-  const shot=$('#w-shot').value!==''?Number($('#w-shot').value):(st.cur!=null?st.cur:'');
   const kd=$('#w-kind').value;
   const date=$('#w-date').value||today();
+  const curAt=wCumAt(m.품번,date);
+  const shot=$('#w-shot').value!==''?Number($('#w-shot').value):(curAt!=null?curAt:'');
   WASH.push({id:Date.now(),품번:m.품번,고객사:m.고객사,금형번호:m.금형번호,등급:m.등급,유형:wkind(m.등급),
     생산완료일:$('#w-pdate').value||today(),세척일:date,
     구분:kd,타발수:shot===''?'':shot,사용타발수:st.used,기준타발수:st.base?st.base.v:null,
@@ -12413,13 +12486,14 @@ $('#wb-clr').onclick=async()=>{
 };
 $('#w-scsv').onclick=()=>{
   const rows=[['고객사','품번','금형번호','등급','세척유형','정기세척 기준(타)','기간 기준(일)',
-    '기준 타발수','기준일','기준 출처','대장 누적타발수','사용 타발수','잔여 타발수','경과일','잔여일',
-    '판정기준','진행률(%)','상태','최근 세척일']];
+    '기준 타발수','기준일','기준 출처','누적타발수(대장+MES)','사용 타발수','잔여 타발수','경과일','잔여일',
+    '판정기준','진행률(%)','상태','최근 세척일','MES 보정 타발수','최근30일 일평균','예상 도래일','예상 잔여일','사전계획 대상']];
   MOLDS.forEach(m=>{const s=wState(m);
     rows.push([m.고객사,m.품번,m.금형번호,m.등급,wkind(m.등급),s.lim,WPERIOD,
       s.base?s.base.v:'',s.base?s.base.date:'',s.base?s.base.src:'',
       s.cur==null?'':s.cur,s.used==null?'':s.used,s.used==null?'':Math.max(s.left,0),
-      s.gone==null?'':s.gone,s.gone==null?'':Math.max(s.left2,0),s.by,s.pct,WKTXT[s.k],s.last||''])});
+      s.gone==null?'':s.gone,s.gone==null?'':Math.max(s.left2,0),s.by,s.pct,WKTXT[s.k],s.last||'',
+      s.mes||0,s.avg==null?'':Math.round(s.avg),s.base&&s.k!=='over'?s.eta:'',s.base&&s.k!=='over'?s.etaDays:'',s.plan?'Y':''])});
   csv(rows,'금형_세척현황_'+today()+'.csv');
 };
 $('#w-hcsv').onclick=()=>{
@@ -12578,7 +12652,7 @@ $('#wbk-run').onclick=async()=>{
   if(!list.length){toast('등록할 대상이 없습니다');return}
   if(!confirm(`${list.length}품번에 ${d} 자 정기세척 이력을 등록합니다.\n각 금형의 기준점이 현재 누적 타발수로 갱신되어 사용 타발수가 0으로 리셋됩니다. 계속할까요?`))return;
   list.forEach((m,i)=>{
-    const st=wState(m), cum=wCum(m.품번);
+    const st=wState(m), cum=wCumAt(m.품번,d);
     WASH.push({id:Date.now()+i,품번:m.품번,고객사:m.고객사,금형번호:m.금형번호,등급:m.등급,유형:wkind(m.등급),
       생산완료일:d,세척일:d,구분:'정기세척 (타발수·기간 기준)',타발수:cum==null?'':cum,
       사용타발수:st.used,기준타발수:st.base?st.base.v:null,
@@ -12653,7 +12727,8 @@ renderSys(); setInterval(renderSys,1000);
 if(!Object.keys(PLAN).length) PLAN=defaultPlan();
 render();
 wInit();
-connect(true).then(()=>wPull(true));
+connect(true).then(()=>wPull(true)).then(()=>mesLoad());
+setInterval(()=>{ if(sb) mesLoad(); },10*60000);   // MES 타발수 10분마다 갱신 (실패 시 재시도 포함)
 </script>
 
 
